@@ -356,16 +356,21 @@ async function handleAuth() {
   loginButton.textContent = "登录中...";
   message.textContent = "正在验证账号...";
   try {
-    if (typeof cloudbaseAuth.signIn === "function") {
-      await cloudbaseAuth.signIn({ username: account, password });
+    let loginResult = null;
+    if (typeof cloudbaseAuth.signInWithPassword === "function") {
+      loginResult = await cloudbaseAuth.signInWithPassword({ username: account, password });
     } else if (typeof cloudbaseAuth.signInWithUsernameAndPassword === "function") {
       await cloudbaseAuth.signInWithUsernameAndPassword(account, password);
+    } else if (typeof cloudbaseAuth.signIn === "function") {
+      await cloudbaseAuth.signIn({ username: account, password });
     } else {
       throw new Error("当前 CloudBase SDK 不支持账号密码登录");
     }
+    if (loginResult?.error) throw loginResult.error;
     const user = await getCloudBaseCurrentUser();
-    if (!user) throw new Error("登录状态未建立，请重试");
-    currentAppUser = getCloudBaseUserLabel(user, account);
+    if (!user && !loginResult?.data?.user) throw new Error("登录状态未建立，请重试");
+    const authedUser = user || loginResult.data.user;
+    currentAppUser = getCloudBaseUserLabel(authedUser, account);
     storageMode = "cloud";
     updateStorageStatus("云端已连接");
     await loadCloudData();
@@ -402,7 +407,12 @@ async function logout() {
 async function getCloudBaseCurrentUser() {
   if (!cloudbaseAuth) return null;
   if (typeof cloudbaseAuth.getCurrentUser === "function") {
-    return await cloudbaseAuth.getCurrentUser();
+    const user = await cloudbaseAuth.getCurrentUser();
+    if (user) return user;
+  }
+  if (typeof cloudbaseAuth.getSession === "function") {
+    const sessionResult = await cloudbaseAuth.getSession();
+    return sessionResult?.data?.session?.user || sessionResult?.session?.user || null;
   }
   return cloudbaseAuth.currentUser || null;
 }
@@ -412,7 +422,7 @@ function getCloudBaseUserLabel(user, fallback = "") {
 }
 
 function getCloudErrorMessage(error) {
-  const raw = String(error?.message || error || "");
+  const raw = extractErrorText(error);
   if (/failed to fetch|cors|cross-origin|permission denied/i.test(raw)) {
     return "连接 CloudBase 失败。请确认安全来源已添加 zenghanlu04-source.github.io，并检查 PostgreSQL 的登录用户权限。";
   }
@@ -423,6 +433,28 @@ function getCloudErrorMessage(error) {
     return "账号或密码不正确，请使用管理员在 CloudBase 中创建的账号。";
   }
   return raw || "登录失败，请检查账号、密码、CloudBase 安全来源和身份认证设置。";
+}
+
+function extractErrorText(error) {
+  if (!error) return "";
+  if (typeof error === "string") return error;
+  const direct = [
+    error.message,
+    error.error_description,
+    error.errorDescription,
+    error.description,
+    error.helpMessage,
+    error.msg,
+    error.code,
+    error.error,
+  ].find((value) => typeof value === "string" && value.trim());
+  if (direct) return direct;
+  if (error.originError && error.originError !== error) return extractErrorText(error.originError);
+  try {
+    return JSON.stringify(error);
+  } catch (jsonError) {
+    return String(error);
+  }
 }
 
 function openBackupModal(mode, envelope = null) {
