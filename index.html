@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VR培训排期管理系统原型</title>
+  <link rel="stylesheet" href="./styles.css?v=20260827b">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">VR</div>
+        <div>
+          <strong>培训排期</strong>
+          <span>设备容量管理</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-page="overview" title="总览">
+          <span class="icon">⌂</span><span>总览</span>
+        </button>
+        <button class="nav-item" data-page="training" title="培训管理">
+          <span class="icon">▦</span><span>培训管理</span>
+        </button>
+        <button class="nav-item" data-page="teacher" title="师资信息管理">
+          <span class="icon">◇</span><span>师资信息</span>
+        </button>
+        <button class="nav-item" data-page="dispatch" title="讲师派遣管理">
+          <span class="icon">↗</span><span>讲师派遣</span>
+        </button>
+        <button class="nav-item" data-page="anomaly" title="异常记录">
+          <span class="icon">!</span><span>异常记录</span>
+        </button>
+      </nav>
+      <div class="side-note">
+        <span>第一版原型</span>
+        <strong>按设备批次数量管理</strong>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">内部运营后台</p>
+          <h1 id="page-title">总览</h1>
+        </div>
+        <div class="top-actions">
+          <span class="connection-pill" id="connection-status">本地预览</span>
+          <button class="ghost collapsed" id="logout-button">退出登录</button>
+          <label class="compact-input">
+            <span>设备总数</span>
+            <input id="total-devices" type="number" value="600" min="0">
+          </label>
+          <button class="primary" id="quick-create">创建培训</button>
+        </div>
+      </header>
+
+      <section class="page active" id="overview-page">
+        <div class="metric-grid" id="metrics"></div>
+
+        <section class="panel overview-notices">
+          <div class="panel-head">
+            <div>
+              <h2>近期提醒</h2>
+              <p>发货、抵达和设备紧张日期</p>
+            </div>
+          </div>
+          <div class="notice-grid" id="notices"></div>
+        </section>
+
+        <section class="panel gantt-panel">
+          <div class="panel-head">
+            <div>
+              <h2>未来15天培训排期表</h2>
+            </div>
+            <div class="filters">
+              <select id="biz-filter"></select>
+              <button class="ghost" id="reset-filter">全部商务</button>
+              <button class="ghost" id="export-gantt">导出甘特图</button>
+            </div>
+          </div>
+          <div class="gantt-wrap" id="gantt"></div>
+        </section>
+      </section>
+
+      <section class="page" id="training-page">
+        <div class="training-layout">
+          <section class="panel training-list-panel">
+            <div class="panel-head">
+              <div>
+                <h2>VR线下培训一览表</h2>
+                <p>支持按商务、省份、状态和风险筛选</p>
+              </div>
+            </div>
+            <div class="table-filters">
+              <select id="list-biz-filter"></select>
+              <select id="province-filter"></select>
+              <select id="status-filter"></select>
+              <select id="risk-filter">
+                <option value="">全部风险</option>
+                <option value="risk">存在风险</option>
+                <option value="safe">无风险</option>
+              </select>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>商务</th>
+                    <th>培训班名称</th>
+                    <th>客户机构名称</th>
+                    <th>省市</th>
+                    <th>培训人数</th>
+                    <th>设备需求量</th>
+                    <th>培训日期</th>
+                    <th>派遣讲师</th>
+                    <th>状态</th>
+                    <th>邮寄地址</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="training-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="dispatch-page">
+        <div class="training-layout">
+          <section class="panel training-list-panel">
+            <div class="panel-head">
+              <div>
+                <h2>讲师派遣管理</h2>
+                <p>自动同步培训和讲师，补充评分、报销与结算信息</p>
+              </div>
+            </div>
+            <div class="table-filters dispatch-filters">
+              <select id="dispatch-teacher-filter">
+                <option value="">全部讲师</option>
+              </select>
+              <div class="amount-summary">
+                <span>当前筛选应结总额</span>
+                <strong id="dispatch-total">0元</strong>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="dispatch-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>培训班名称</th>
+                    <th>客户机构名称</th>
+                    <th>省市</th>
+                    <th>培训人数</th>
+                    <th>商务</th>
+                    <th>讲师</th>
+                    <th>培训日期</th>
+                    <th>工作流程评分</th>
+                    <th>问卷满意度评分</th>
+                    <th>评分状态</th>
+                    <th>授课天数</th>
+                    <th>劳务报酬</th>
+                    <th>报销费用</th>
+                    <th>报销状态</th>
+                    <th>扣款</th>
+                    <th>应结金额</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="dispatch-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="anomaly-page">
+        <div class="training-layout">
+          <section class="panel training-list-panel">
+            <div class="panel-head">
+              <div>
+                <h2>异常记录</h2>
+                <p>培训结束超过2天仍未填写工作评分或满意度评分的派遣记录</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="anomaly-table">
+                <thead>
+                  <tr>
+                    <th>商务</th>
+                    <th>讲师</th>
+                    <th>培训班名称</th>
+                    <th>客户机构名称</th>
+                    <th>省市</th>
+                    <th>培训日期</th>
+                    <th>缺失信息</th>
+                    <th>应填写截止</th>
+                    <th>超期天数</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="anomaly-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="create-modal collapsed" id="dispatch-modal">
+        <div class="create-backdrop" id="dispatch-backdrop"></div>
+        <section class="panel confirm-panel dispatch-panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="dispatch-modal-title">编辑结算信息</h2>
+              <p id="dispatch-modal-desc">培训信息、讲师、授课天数和劳务报酬自动同步</p>
+            </div>
+          </div>
+          <div class="preview-grid dispatch-form">
+            <label>工作流程评分<input data-dispatch-field="workflowScore" type="number" min="0" max="100" placeholder="0-100"></label>
+            <label>问卷满意度评分<input data-dispatch-field="surveyScore" type="number" min="0" max="100" placeholder="0-100"></label>
+            <label>报销费用<input data-dispatch-field="reimbursement" type="number" min="0" value="0"></label>
+            <label>报销状态<select data-dispatch-field="reimbursementStatus">
+              <option value="待审核">待审核</option>
+              <option value="已结算">已结算</option>
+            </select></label>
+            <label>扣款<input data-dispatch-field="adjustment" type="number" min="0" value="0"></label>
+          </div>
+          <div class="form-actions">
+            <button class="ghost" id="cancel-dispatch">取消</button>
+            <button class="primary" id="save-dispatch">保存结算</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="create-modal collapsed" id="amount-modal">
+        <div class="create-backdrop" id="amount-backdrop"></div>
+        <section class="panel confirm-panel amount-panel">
+          <div class="panel-head">
+            <div>
+              <h2>应结金额计算详情</h2>
+              <p id="amount-modal-desc">劳务报酬不包含报销费用</p>
+            </div>
+          </div>
+          <div class="amount-detail" id="amount-detail"></div>
+          <div class="form-actions">
+            <button class="primary" id="close-amount">知道了</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="page" id="teacher-page">
+        <div class="training-layout">
+          <section class="panel training-list-panel">
+            <div class="panel-head">
+              <div>
+                <h2>师资信息管理</h2>
+                <p>讲师派遣能力、服务质量和基础档案维护</p>
+              </div>
+            </div>
+            <div class="table-filters">
+              <input id="teacher-search" placeholder="搜索讲师姓名">
+            </div>
+            <div class="table-wrap">
+              <table class="teacher-table">
+                <thead>
+                  <tr>
+                    <th>讲师姓名</th>
+                    <th>讲师手机号</th>
+                    <th>常驻城市</th>
+                    <th>可出差范围</th>
+                    <th>累计场次</th>
+                    <th>派遣拒绝次数</th>
+                    <th>临时取消（次数）</th>
+                    <th>客户投诉（次数）</th>
+                    <th>讲师评级</th>
+                    <th>师资状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="teacher-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="create-modal collapsed" id="teacher-modal">
+        <div class="create-backdrop" id="teacher-backdrop"></div>
+        <section class="panel create-panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="teacher-modal-title">创建师资信息</h2>
+              <p>身份证号、银行卡号、开户行作为隐藏档案信息，不在列表展示</p>
+            </div>
+            <div class="panel-actions">
+              <button class="ghost" id="cancel-teacher">取消</button>
+              <button class="primary" id="save-teacher">保存信息</button>
+            </div>
+          </div>
+          <div class="preview-grid teacher-form" id="teacher-form">
+            <label>讲师姓名<input data-teacher-field="name" placeholder="请输入讲师姓名"></label>
+            <label>讲师手机号<input data-teacher-field="phone" placeholder="请输入手机号"></label>
+            <label>常驻城市<input data-teacher-field="city" placeholder="如：安徽合肥"></label>
+            <label>可出差范围<input data-teacher-field="travelRange" placeholder="如：华东/全国/省内"></label>
+            <label>历史累计场次<input data-teacher-field="sessions" type="number" min="0" value="0"></label>
+            <label>派遣拒绝次数<input data-teacher-field="refusals" type="number" min="0" value="0"></label>
+            <label>临时取消（次数）<input data-teacher-field="cancellations" type="number" min="0" value="0"></label>
+            <label>客户投诉（次数）<input data-teacher-field="complaints" type="number" min="0" value="0"></label>
+            <label>讲师评级<select data-teacher-field="rating">
+              <option value="普通">普通</option>
+              <option value="铜牌">铜牌</option>
+              <option value="银牌">银牌</option>
+              <option value="金牌">金牌</option>
+              <option value="钻石">钻石</option>
+            </select></label>
+            <label>师资状态<select data-teacher-field="teacherStatus">
+              <option value="正常">正常</option>
+              <option value="离职">离职</option>
+            </select></label>
+            <label>身份证号<input data-teacher-field="idCard" placeholder="隐藏信息"></label>
+            <label>银行卡号<input data-teacher-field="bankCard" placeholder="隐藏信息"></label>
+            <label>开户行<input data-teacher-field="bankName" placeholder="隐藏信息"></label>
+          </div>
+        </section>
+      </section>
+
+      <section class="create-modal collapsed" id="create-modal">
+        <div class="create-backdrop" id="create-backdrop"></div>
+        <section class="panel create-panel">
+          <div class="panel-head">
+            <div>
+              <h2>智能创建培训</h2>
+              <p>粘贴商务微信需求，识别后再确认创建</p>
+            </div>
+            <div class="panel-actions">
+              <button class="ghost" id="toggle-create">收起</button>
+              <button class="primary" id="parse-text">智能识别</button>
+            </div>
+          </div>
+          <div class="create-body">
+            <textarea id="smart-input" spellcheck="false"></textarea>
+            <div class="preview-grid" id="preview-form"></div>
+            <div class="source-editor">
+              <div class="source-head">
+                <h3>设备来源</h3>
+                <button class="ghost" id="add-source">增加来源</button>
+              </div>
+              <div id="sources"></div>
+              <div class="source-total" id="source-total"></div>
+            </div>
+            <div class="risk-card" id="create-risk"></div>
+            <div class="form-actions">
+              <button class="ghost" id="save-draft">保存为预排</button>
+              <button class="primary" id="create-training">确认创建培训</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="confirm-modal collapsed" id="delete-modal">
+        <div class="confirm-backdrop" id="delete-backdrop"></div>
+        <section class="panel confirm-panel">
+          <h2>确认删除培训？</h2>
+          <p id="delete-message"></p>
+          <div class="form-actions">
+            <button class="ghost" id="cancel-delete">取消</button>
+            <button class="danger" id="confirm-delete">确认删除</button>
+          </div>
+        </section>
+      </section>
+
+    </main>
+  </div>
+  <section class="create-modal collapsed" id="auth-modal">
+    <div class="create-backdrop"></div>
+    <section class="panel confirm-panel auth-panel">
+      <div class="panel-head">
+        <div>
+          <h2>登录 VR 培训排期系统</h2>
+          <p>登录后数据将保存到腾讯云 CloudBase，支持多人共同使用</p>
+        </div>
+      </div>
+      <div class="preview-grid auth-form">
+        <label>账号/邮箱<input id="auth-email" type="text" placeholder="请输入账号或邮箱"></label>
+        <label>密码<input id="auth-password" type="password" placeholder="请输入密码"></label>
+      </div>
+      <label class="remember-row">
+        <input id="remember-login" type="checkbox" checked>
+        <span>记住密码，下次自动登录</span>
+      </label>
+      <p class="muted-text" id="auth-message"></p>
+      <div class="form-actions">
+        <button class="ghost" id="signup-button">创建账号</button>
+        <button class="primary" id="login-button">登录</button>
+      </div>
+    </section>
+  </section>
+  <script src="./config.js?v=20260828d"></script>
+  <script src="https://static.cloudbase.net/cloudbase-js-sdk/2.10.2/cloudbase.full.js"></script>
+  <script src="./app.js?v=20260828d"></script>
+</body>
+</html>
