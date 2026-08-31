@@ -254,6 +254,11 @@ h3 {
   gap: 10px;
 }
 
+.top-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .compact-input {
   display: flex;
   align-items: center;
@@ -297,6 +302,12 @@ h3 {
 .connection-pill.cloud {
   background: var(--green-soft);
   color: #226348;
+}
+
+.current-user {
+  color: #536275;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .primary,
@@ -950,6 +961,32 @@ table {
 
 .auth-form {
   grid-template-columns: 1fr;
+}
+
+.security-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(233, 241, 251, 0.68);
+  color: #536275;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.backup-panel {
+  width: min(520px, calc(100vw - 48px));
+}
+
+.backup-password {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  color: #536275;
+  font-size: 13px;
+}
+
+.backup-password input {
+  width: 100%;
 }
 
 .remember-row {

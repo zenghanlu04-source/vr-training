@@ -7,6 +7,9 @@ const statuses = ["待排期", "已确认", "运输中", "使用中", "已完成
 const localStorageKey = "vr_schedule_manager_state_v1";
 const localAccountKey = "vr_schedule_manager_accounts_v1";
 const rememberLoginKey = "vr_schedule_manager_remember_login_v1";
+const backupFormat = "vr-training-encrypted-backup";
+const backupVersion = 1;
+const backupIterations = 250000;
 
 let totalDevices = 600;
 let currentPage = "overview";
@@ -23,10 +26,9 @@ let editingDispatchKey = null;
 let cloudbaseApp = null;
 let cloudbaseAuth = null;
 let cloudbaseDb = null;
-let cloudSession = null;
-let storageMode = "local";
-let appAccounts = [];
+let storageMode = "locked";
 let currentAppUser = null;
+let pendingRestoreBackup = null;
 
 let dispatchSettlements = {
   "T001-S001": {
@@ -138,9 +140,16 @@ function hasCloudBaseConfig() {
 function updateStorageStatus(message) {
   const status = document.querySelector("#connection-status");
   if (!status) return;
-  status.textContent = message || (storageMode === "cloud" ? "云端已连接" : "本地预览");
+  status.textContent = message || (storageMode === "cloud" ? "云端已连接" : "请登录");
   status.classList.toggle("cloud", storageMode === "cloud");
   document.querySelector("#logout-button")?.classList.toggle("collapsed", !currentAppUser);
+  document.querySelector("#backup-data")?.classList.toggle("collapsed", !currentAppUser);
+  document.querySelector("#restore-data")?.classList.toggle("collapsed", !currentAppUser);
+  const userLabel = document.querySelector("#current-user");
+  if (userLabel) {
+    userLabel.textContent = currentAppUser ? `当前账号：${currentAppUser}` : "";
+    userLabel.classList.toggle("collapsed", !currentAppUser);
+  }
 }
 
 function getDataSnapshot() {
@@ -159,44 +168,21 @@ function applyDataSnapshot(snapshot = {}) {
 }
 
 function loadLocalData() {
-  try {
-    const raw = localStorage.getItem(localStorageKey);
-    if (raw) applyDataSnapshot(JSON.parse(raw));
-  } catch (error) {
-    console.warn("读取本地缓存失败", error);
-  }
-  try {
-    const rawAccounts = localStorage.getItem(localAccountKey);
-    if (rawAccounts) appAccounts = JSON.parse(rawAccounts);
-  } catch (error) {
-    console.warn("读取本地账号失败", error);
-  }
+  localStorage.removeItem(localStorageKey);
+  localStorage.removeItem(localAccountKey);
+  localStorage.removeItem(rememberLoginKey);
 }
 
 function saveLocalData() {
-  try {
-    localStorage.setItem(localStorageKey, JSON.stringify(getDataSnapshot()));
-  } catch (error) {
-    console.warn("保存本地缓存失败", error);
-  }
-}
-
-function saveLocalAccounts() {
-  try {
-    localStorage.setItem(localAccountKey, JSON.stringify(appAccounts));
-  } catch (error) {
-    console.warn("保存本地账号失败", error);
-  }
+  // Sensitive teacher records are never persisted in browser storage.
 }
 
 async function initPersistence() {
   loadLocalData();
   if (!hasCloudBaseConfig()) {
-    storageMode = "local";
-    updateStorageStatus("本地预览");
-    if (!tryAutoLogin()) {
-      openAuthModal("当前为本地账号模式，可直接创建账号体验；配置 CloudBase 后数据再同步到云端。");
-    }
+    storageMode = "locked";
+    updateStorageStatus("云端未配置");
+    openAuthModal("系统未连接云数据库，为保护敏感信息，当前已停止本地模式。", true);
     return;
   }
 
@@ -209,18 +195,23 @@ async function initPersistence() {
     });
     cloudbaseAuth = typeof cloudbaseApp.auth === "function" ? cloudbaseApp.auth() : cloudbaseApp.auth;
     cloudbaseDb = cloudbaseApp.rdb();
-    await ensureCloudBaseAccess();
+    const currentUser = await getCloudBaseCurrentUser();
+    if (!currentUser) {
+      storageMode = "locked";
+      updateStorageStatus("请登录");
+      openAuthModal();
+      return;
+    }
+    currentAppUser = getCloudBaseUserLabel(currentUser);
     storageMode = "cloud";
     updateStorageStatus("云端已连接");
     await loadCloudData();
-    if (!tryAutoLogin()) openAuthModal();
+    closeAuthModal();
   } catch (error) {
-    storageMode = "local";
+    storageMode = "locked";
     updateStorageStatus("云端初始化失败");
     console.error(error);
-    if (!tryAutoLogin()) {
-      openAuthModal("CloudBase 初始化失败，当前可先用本地账号体验。若要云端同步，请检查环境 ID、安全来源和 PostgreSQL 权限配置。");
-    }
+    openAuthModal("CloudBase 初始化失败。为保护敏感信息，本地离线模式已停用，请检查环境 ID、安全来源和身份认证配置。", true);
   }
 }
 
@@ -244,26 +235,19 @@ async function loadCloudData() {
   const nextTrainings = [];
   const nextTeachers = [];
   const nextSettlements = {};
-  const nextAccounts = [...appAccounts];
   let nextTotalDevices = totalDevices;
   rows.forEach((row) => {
     if (row.collection === "settings" && row.record_key === "main") nextTotalDevices = Number(row.data.totalDevices) || totalDevices;
     if (row.collection === "trainings") nextTrainings.push(row.data);
     if (row.collection === "teachers") nextTeachers.push(row.data);
     if (row.collection === "dispatch_settlements") nextSettlements[row.record_key] = row.data;
-    if (row.collection === "app_accounts" && !nextAccounts.some((item) => item.username === row.record_key)) {
-      nextAccounts.push(row.data);
-    }
   });
-  appAccounts = nextAccounts;
   applyDataSnapshot({
     totalDevices: nextTotalDevices,
     trainings: nextTrainings.length ? nextTrainings.sort((a, b) => Number(a.serial || 0) - Number(b.serial || 0)) : trainings,
     teachers: nextTeachers.length ? nextTeachers : teachers,
     dispatchSettlements: Object.keys(nextSettlements).length ? nextSettlements : dispatchSettlements,
   });
-  saveLocalData();
-  saveLocalAccounts();
 }
 
 async function seedCloudData() {
@@ -276,8 +260,7 @@ async function seedCloudData() {
 }
 
 async function upsertRecord(collection, recordKey, data) {
-  saveLocalData();
-  if (!cloudbaseDb || storageMode !== "cloud") return;
+  if (!cloudbaseDb || storageMode !== "cloud") return false;
   try {
     const result = await cloudbaseDb
       .from("vr_records")
@@ -286,14 +269,14 @@ async function upsertRecord(collection, recordKey, data) {
   } catch (error) {
     updateStorageStatus("云端保存失败");
     console.error(error);
-    return;
+    return false;
   }
   updateStorageStatus("云端已保存");
+  return true;
 }
 
 async function deleteRecord(collection, recordKey) {
-  saveLocalData();
-  if (!cloudbaseDb || storageMode !== "cloud") return;
+  if (!cloudbaseDb || storageMode !== "cloud") return false;
   try {
     const result = await cloudbaseDb
       .from("vr_records")
@@ -304,9 +287,10 @@ async function deleteRecord(collection, recordKey) {
   } catch (error) {
     updateStorageStatus("云端删除失败");
     console.error(error);
-    return;
+    return false;
   }
   updateStorageStatus("云端已保存");
+  return true;
 }
 
 function saveSettings() {
@@ -323,11 +307,6 @@ function saveTeacherRecord(item) {
 
 function saveDispatchSettlementRecord(key, data) {
   return upsertRecord("dispatch_settlements", key, data);
-}
-
-function saveAppAccountRecord(account) {
-  saveLocalAccounts();
-  return upsertRecord("app_accounts", account.username, account);
 }
 
 function normalizeCloudRows(result) {
@@ -350,18 +329,16 @@ function openAuthModal(message = "", setupOnly = false) {
   document.querySelector("#auth-modal")?.classList.remove("collapsed");
   const messageEl = document.querySelector("#auth-message");
   if (messageEl) messageEl.textContent = message;
-  fillRememberedLogin();
   document.querySelector("#auth-email")?.toggleAttribute("disabled", setupOnly);
   document.querySelector("#auth-password")?.toggleAttribute("disabled", setupOnly);
   document.querySelector("#login-button")?.toggleAttribute("disabled", setupOnly);
-  document.querySelector("#signup-button")?.toggleAttribute("disabled", setupOnly);
 }
 
 function closeAuthModal() {
   document.querySelector("#auth-modal")?.classList.add("collapsed");
 }
 
-async function handleAuth(action) {
+async function handleAuth() {
   const account = document.querySelector("#auth-email").value.trim();
   const password = document.querySelector("#auth-password").value;
   const message = document.querySelector("#auth-message");
@@ -369,130 +346,295 @@ async function handleAuth(action) {
     message.textContent = "请填写账号和密码。";
     return;
   }
+  if (!cloudbaseAuth || !cloudbaseDb) {
+    message.textContent = "云端尚未连接，请稍后刷新或检查 CloudBase 配置。";
+    return;
+  }
 
-  if (action === "signup") {
-    if (appAccounts.some((item) => item.username === account)) {
-      message.textContent = "这个账号已经存在，换一个账号名或直接登录。";
-      return;
+  const loginButton = document.querySelector("#login-button");
+  loginButton.disabled = true;
+  loginButton.textContent = "登录中...";
+  message.textContent = "正在验证账号...";
+  try {
+    if (typeof cloudbaseAuth.signIn === "function") {
+      await cloudbaseAuth.signIn({ username: account, password });
+    } else if (typeof cloudbaseAuth.signInWithUsernameAndPassword === "function") {
+      await cloudbaseAuth.signInWithUsernameAndPassword(account, password);
+    } else {
+      throw new Error("当前 CloudBase SDK 不支持账号密码登录");
     }
-    const nextAccount = {
-      username: account,
-      password,
-      createdAt: new Date().toISOString(),
-    };
-    appAccounts.push(nextAccount);
-    currentAppUser = account;
-    persistRememberedLogin(account, password);
-    await saveAppAccountRecord(nextAccount);
+    const user = await getCloudBaseCurrentUser();
+    if (!user) throw new Error("登录状态未建立，请重试");
+    currentAppUser = getCloudBaseUserLabel(user, account);
+    storageMode = "cloud";
+    updateStorageStatus("云端已连接");
+    await loadCloudData();
     renderAll();
+    document.querySelector("#auth-password").value = "";
     closeAuthModal();
-    updateStorageStatus(storageMode === "cloud" ? "云端已连接" : "本地预览");
-    return;
+  } catch (error) {
+    storageMode = "locked";
+    currentAppUser = null;
+    updateStorageStatus("登录失败");
+    message.textContent = getCloudErrorMessage(error);
+  } finally {
+    loginButton.disabled = false;
+    loginButton.textContent = "登录";
   }
-
-  const found = appAccounts.find((item) => item.username === account && item.password === password);
-  if (!found) {
-    message.textContent = appAccounts.length ? "账号或密码不正确。" : "还没有账号，请先点“创建账号”。";
-    return;
-  }
-  currentAppUser = found.username;
-  persistRememberedLogin(account, password);
-  renderAll();
-  closeAuthModal();
-  updateStorageStatus(storageMode === "cloud" ? "云端已连接" : "本地预览");
 }
 
 async function logout() {
+  try {
+    await cloudbaseAuth?.signOut?.();
+  } catch (error) {
+    console.warn("CloudBase 退出登录失败", error);
+  }
   currentAppUser = null;
-  clearRememberedLogin();
-  storageMode = cloudbaseDb ? "cloud" : "local";
-  updateStorageStatus(cloudbaseDb ? "云端已连接" : "本地预览");
+  storageMode = "locked";
+  trainings = [];
+  teachers = [];
+  dispatchSettlements = {};
+  updateStorageStatus("已退出");
+  renderAll();
   openAuthModal();
 }
 
-function getRememberedLogin() {
-  try {
-    const raw = localStorage.getItem(rememberLoginKey);
-    return raw ? JSON.parse(raw) : null;
-  } catch (error) {
-    console.warn("读取记住密码失败", error);
-    return null;
+async function getCloudBaseCurrentUser() {
+  if (!cloudbaseAuth) return null;
+  if (typeof cloudbaseAuth.getCurrentUser === "function") {
+    return await cloudbaseAuth.getCurrentUser();
   }
+  return cloudbaseAuth.currentUser || null;
 }
 
-function fillRememberedLogin() {
-  const remembered = getRememberedLogin();
-  if (!remembered) return;
-  const accountInput = document.querySelector("#auth-email");
-  const passwordInput = document.querySelector("#auth-password");
-  const rememberInput = document.querySelector("#remember-login");
-  if (accountInput && !accountInput.value) accountInput.value = remembered.username || "";
-  if (passwordInput && !passwordInput.value) passwordInput.value = remembered.password || "";
-  if (rememberInput) rememberInput.checked = true;
-}
-
-function persistRememberedLogin(username, password) {
-  const rememberInput = document.querySelector("#remember-login");
-  if (!rememberInput?.checked) {
-    clearRememberedLogin();
-    return;
-  }
-  localStorage.setItem(rememberLoginKey, JSON.stringify({ username, password }));
-}
-
-function clearRememberedLogin() {
-  localStorage.removeItem(rememberLoginKey);
-  const rememberInput = document.querySelector("#remember-login");
-  if (rememberInput) rememberInput.checked = false;
-}
-
-function tryAutoLogin() {
-  const remembered = getRememberedLogin();
-  if (!remembered?.username || !remembered?.password) return false;
-  const found = appAccounts.find((item) => item.username === remembered.username && item.password === remembered.password);
-  if (!found) return false;
-  currentAppUser = found.username;
-  closeAuthModal();
-  renderAll();
-  updateStorageStatus(storageMode === "cloud" ? "云端已连接" : "本地预览");
-  return true;
-}
-
-async function ensureCloudBaseAccess() {
-  if (!cloudbaseAuth) return;
-  const sessionResult = cloudbaseAuth.getSession ? await cloudbaseAuth.getSession() : null;
-  cloudSession = sessionResult?.data?.session || sessionResult?.session || null;
-  if (cloudSession) return;
-
-  const anonymousProvider = cloudbaseAuth.anonymousAuthProvider?.();
-  const anonymousMethods = [
-    { fn: cloudbaseAuth.signInAnonymously, ctx: cloudbaseAuth },
-    { fn: cloudbaseAuth.signInWithAnonymous, ctx: cloudbaseAuth },
-    { fn: anonymousProvider?.signIn, ctx: anonymousProvider },
-  ].filter((item) => item.fn);
-  for (const { fn, ctx } of anonymousMethods) {
-    try {
-      const result = await fn.call(ctx);
-      cloudSession = result?.data?.session || result?.session || result || true;
-      return;
-    } catch (error) {
-      console.warn("CloudBase anonymous auth failed", error);
-    }
-  }
+function getCloudBaseUserLabel(user, fallback = "") {
+  return user?.username || user?.name || user?.email || user?.uid || fallback || "已认证用户";
 }
 
 function getCloudErrorMessage(error) {
   const raw = String(error?.message || error || "");
   if (/failed to fetch|cors|cross-origin|permission denied/i.test(raw)) {
-    return "连接 CloudBase 失败。请在 CloudBase 的“环境配置/安全来源”里添加 127.0.0.1:8765，等待 1-2 分钟后刷新再试。";
+    return "连接 CloudBase 失败。请确认安全来源已添加 zenghanlu04-source.github.io，并检查 PostgreSQL 的登录用户权限。";
   }
   if (/provider|not enabled|unauthorized_client/i.test(raw)) {
-    return "CloudBase 匿名访问未开启。若要云端同步，请在 CloudBase 身份认证里开启匿名登录，或先按本地模式体验。";
+    return "CloudBase 用户名密码登录未开启，请在身份认证的登录方式中启用。";
   }
   if (/invalid|password|credential/i.test(raw)) {
-    return "系统账号或密码不正确，请确认是否已经在弹窗里创建过。";
+    return "账号或密码不正确，请使用管理员在 CloudBase 中创建的账号。";
   }
-  return raw || "登录失败，请检查账号、密码、CloudBase 安全来源和匿名访问设置。";
+  return raw || "登录失败，请检查账号、密码、CloudBase 安全来源和身份认证设置。";
+}
+
+function openBackupModal(mode, envelope = null) {
+  pendingRestoreBackup = mode === "restore" ? envelope : null;
+  const modal = document.querySelector("#backup-modal");
+  const title = document.querySelector("#backup-modal-title");
+  const desc = document.querySelector("#backup-modal-desc");
+  const button = document.querySelector("#confirm-backup");
+  const password = document.querySelector("#backup-password");
+  const message = document.querySelector("#backup-message");
+  title.textContent = mode === "restore" ? "恢复加密备份" : "导出加密备份";
+  desc.textContent = mode === "restore"
+    ? "输入创建备份时使用的密码，验证后可恢复数据。"
+    : "备份包含培训、讲师和派遣数据，不包含登录密码。";
+  button.textContent = mode === "restore" ? "验证并恢复" : "导出备份";
+  button.dataset.mode = mode;
+  password.value = "";
+  message.textContent = "";
+  modal.classList.remove("collapsed");
+  password.focus();
+}
+
+function closeBackupModal() {
+  document.querySelector("#backup-modal")?.classList.add("collapsed");
+  document.querySelector("#backup-password").value = "";
+  document.querySelector("#backup-message").textContent = "";
+  pendingRestoreBackup = null;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function deriveBackupKey(password, salt, usages) {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: backupIterations, hash: "SHA-256" },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    usages,
+  );
+}
+
+async function createEncryptedBackup(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveBackupKey(password, salt, ["encrypt"]);
+  const payload = {
+    format: backupFormat,
+    version: backupVersion,
+    createdAt: new Date().toISOString(),
+    exportedBy: currentAppUser,
+    data: getDataSnapshot(),
+  };
+  const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+  return {
+    format: backupFormat,
+    version: backupVersion,
+    encrypted: true,
+    algorithm: "AES-256-GCM",
+    kdf: "PBKDF2-SHA256",
+    iterations: backupIterations,
+    createdAt: payload.createdAt,
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+  };
+}
+
+async function decryptBackup(envelope, password) {
+  if (envelope?.format !== backupFormat || envelope?.version !== backupVersion || !envelope?.encrypted) {
+    throw new Error("这不是有效的 VR 培训系统加密备份文件。");
+  }
+  const salt = base64ToBytes(envelope.salt);
+  const iv = base64ToBytes(envelope.iv);
+  const ciphertext = base64ToBytes(envelope.ciphertext);
+  const key = await deriveBackupKey(password, salt, ["decrypt"]);
+  let plaintext;
+  try {
+    plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  } catch (error) {
+    throw new Error("备份密码不正确，或备份文件已经损坏。");
+  }
+  const payload = JSON.parse(new TextDecoder().decode(plaintext));
+  validateBackupPayload(payload);
+  return payload;
+}
+
+function validateBackupPayload(payload) {
+  const data = payload?.data;
+  if (
+    payload?.format !== backupFormat
+    || payload?.version !== backupVersion
+    || !data
+    || !Array.isArray(data.trainings)
+    || !Array.isArray(data.teachers)
+    || !data.dispatchSettlements
+    || typeof data.dispatchSettlements !== "object"
+  ) {
+    throw new Error("备份内容不完整，无法恢复。");
+  }
+}
+
+function downloadJsonFile(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function backupFilename() {
+  const stamp = new Date().toLocaleString("sv-SE").replace(" ", "_").replaceAll(":", "-");
+  return `VR培训排期备份_${stamp}.vrbackup`;
+}
+
+async function handleBackupAction() {
+  const password = document.querySelector("#backup-password").value;
+  const message = document.querySelector("#backup-message");
+  const button = document.querySelector("#confirm-backup");
+  const mode = button.dataset.mode || "export";
+  if (password.length < 8) {
+    message.textContent = "备份密码至少需要8位。";
+    return;
+  }
+  button.disabled = true;
+  message.textContent = mode === "restore" ? "正在验证备份..." : "正在加密数据...";
+  try {
+    if (mode === "export") {
+      const envelope = await createEncryptedBackup(password);
+      downloadJsonFile(envelope, backupFilename());
+      closeBackupModal();
+      updateStorageStatus("加密备份已导出");
+      return;
+    }
+    const payload = await decryptBackup(pendingRestoreBackup, password);
+    const { trainings: nextTrainings, teachers: nextTeachers } = payload.data;
+    const confirmed = window.confirm(
+      `备份包含 ${nextTrainings.length} 场培训、${nextTeachers.length} 位讲师。确认用该备份覆盖当前业务数据吗？`,
+    );
+    if (!confirmed) {
+      message.textContent = "已取消恢复，当前数据没有变化。";
+      return;
+    }
+    message.textContent = "正在恢复云端数据，请勿关闭页面...";
+    await restoreBackupPayload(payload.data);
+    closeBackupModal();
+    updateStorageStatus("备份恢复完成");
+  } catch (error) {
+    message.textContent = String(error?.message || error || "备份操作失败");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function handleRestoreFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const envelope = JSON.parse(await file.text());
+    if (envelope?.format !== backupFormat || !envelope?.encrypted) throw new Error("文件格式不正确。");
+    openBackupModal("restore", envelope);
+  } catch (error) {
+    window.alert(String(error?.message || error || "无法读取备份文件"));
+  }
+}
+
+async function restoreBackupPayload(snapshot) {
+  const previousTrainings = [...trainings];
+  const previousTeachers = [...teachers];
+  const previousSettlementKeys = Object.keys(dispatchSettlements);
+  const nextTrainingIds = new Set(snapshot.trainings.map((item) => item.id));
+  const nextTeacherIds = new Set(snapshot.teachers.map((item) => item.id));
+  const nextSettlementKeys = new Set(Object.keys(snapshot.dispatchSettlements));
+  const operations = [
+    ...previousTrainings.filter((item) => !nextTrainingIds.has(item.id)).map((item) => deleteRecord("trainings", item.id)),
+    ...previousTeachers.filter((item) => !nextTeacherIds.has(item.id)).map((item) => deleteRecord("teachers", item.id)),
+    ...previousSettlementKeys.filter((key) => !nextSettlementKeys.has(key)).map((key) => deleteRecord("dispatch_settlements", key)),
+    upsertRecord("settings", "main", { totalDevices: Number(snapshot.totalDevices) || 0 }),
+    ...snapshot.trainings.map((item) => upsertRecord("trainings", item.id, item)),
+    ...snapshot.teachers.map((item) => upsertRecord("teachers", item.id, item)),
+    ...Object.entries(snapshot.dispatchSettlements).map(([key, value]) => upsertRecord("dispatch_settlements", key, value)),
+  ];
+  const results = await Promise.all(operations);
+  if (results.some((result) => result !== true)) throw new Error("部分数据未能写入云端，请检查连接后重试。");
+  applyDataSnapshot(snapshot);
+  renderAll();
 }
 
 function startOfDay(date) {
@@ -1716,9 +1858,17 @@ function bindEvents() {
   document.querySelector("#dispatch-teacher-filter").addEventListener("change", renderDispatchTable);
   document.querySelector("#amount-backdrop").addEventListener("click", closeAmountDetail);
   document.querySelector("#close-amount").addEventListener("click", closeAmountDetail);
-  document.querySelector("#login-button").addEventListener("click", () => handleAuth("login"));
-  document.querySelector("#signup-button").addEventListener("click", () => handleAuth("signup"));
+  document.querySelector("#login-button").addEventListener("click", handleAuth);
+  document.querySelector("#auth-password").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") void handleAuth();
+  });
   document.querySelector("#logout-button").addEventListener("click", logout);
+  document.querySelector("#backup-data").addEventListener("click", () => openBackupModal("export"));
+  document.querySelector("#restore-data").addEventListener("click", () => document.querySelector("#restore-file").click());
+  document.querySelector("#restore-file").addEventListener("change", handleRestoreFile);
+  document.querySelector("#backup-backdrop").addEventListener("click", closeBackupModal);
+  document.querySelector("#cancel-backup").addEventListener("click", closeBackupModal);
+  document.querySelector("#confirm-backup").addEventListener("click", handleBackupAction);
 }
 
 function toggleCreatePanel() {

@@ -1,8 +1,8 @@
-# VR 培训排期系统部署说明
+# VR 培训排期系统安全部署说明
 
 ## 1. CloudBase 环境
 
-已创建腾讯云 CloudBase 环境后，先确认 `config.js` 中环境 ID 正确：
+确认 `config.js` 中的环境 ID 正确：
 
 ```js
 window.VR_CLOUDBASE_CONFIG = {
@@ -12,81 +12,84 @@ window.VR_CLOUDBASE_CONFIG = {
 };
 ```
 
-如果后续腾讯云控制台要求填写公开访问密钥，把对应的 Publishable Key 填到 `publishableKey`。
+如控制台要求 Publishable Key，只能填写可公开使用的 Publishable Key。严禁把 SecretId、SecretKey 或管理员 API Key 放进网页文件。
 
-## 2. PostgreSQL 表
+## 2. 正式身份认证
 
-进入 CloudBase 控制台左侧 `SQL 型数据库`，打开 `SQL 编辑器`，执行 `cloudbase-postgres-schema.sql`。
+进入 CloudBase 控制台：
 
-这张 `vr_records` 表用来保存：
+1. 打开 `身份认证` > `登录方式`。
+2. 启用 `用户名密码登录`。
+3. 停用 `匿名登录`。
+4. 打开 `身份认证` > `用户管理`，由管理员手动创建 2-3 个账号。
 
-- 培训记录
-- 师资信息
-- 讲师派遣结算
-- 设备总数设置
-
-你已经执行过建表 SQL 的话，这一步不用重复。
-
-## 3. 系统账号
-
-现在采用低成本内部账号方案，不需要在 CloudBase 身份认证里创建账号。
-
-打开系统登录弹窗后，直接填写你想要的账号和密码，点击 `创建账号` 即可。账号会保存到 CloudBase 的 `vr_records` 表里，后续同事用同一个账号密码登录。
-
-建议只创建 2-3 个内部账号，例如：
+建议账号：
 
 - `admin`
 - `ops01`
 - `ops02`
 
-这个方案适合小团队内部使用，重点是低成本和数据同步；不要把账号密码发给无关人员。
+密码应为 8-32 位，并包含大写字母、小写字母、数字和特殊字符中的至少三类。每个人使用独立账号，不共用密码。
 
-如果页面提示云端连接失败，但你仍然想把账号和业务数据同步到 CloudBase，可以在 CloudBase `身份认证` 里开启 `匿名登录`。业务账号仍然在系统弹窗里创建，匿名登录只用于让前端拿到云端读写权限。
+网页不提供自助注册。账号密码由 CloudBase 身份认证管理，业务数据库和浏览器缓存均不保存明文密码。
+
+## 3. PostgreSQL 表与权限
+
+进入 `SQL 型数据库` > `SQL 编辑器`，执行最新版 `cloudbase-postgres-schema.sql`。
+
+脚本将：
+
+- 创建或更新 `vr_records` 表。
+- 启用 PostgreSQL RLS 行级安全。
+- 拒绝匿名用户访问。
+- 仅允许已登录的 CloudBase 用户读写团队共享数据。
+- 删除旧原型遗留的 `app_accounts` 明文账号记录。
+
+执行脚本前建议先导出一次现有业务数据。删除的只是旧账号记录，不会删除培训、讲师或派遣数据。
 
 ## 4. 安全来源
 
-进入 CloudBase 的环境配置或安全配置，把下面地址加入安全来源/安全域名：
+进入 CloudBase `环境配置` > `安全来源`，添加：
 
 ```text
-http://127.0.0.1:8765
+zenghanlu04-source.github.io
 ```
 
-如果后续部署了正式域名，也要把正式域名加进去，例如：
+本地调试时再添加：
 
 ```text
-https://你的正式域名
+127.0.0.1:8765
 ```
 
-没有加入安全来源时，浏览器里通常会显示 `Failed to fetch`。
+安全来源通常需要数分钟生效。
 
-## 5. 本地检查
+## 5. GitHub Pages
 
-在当前目录启动静态服务后打开页面：
-
-```bash
-node -e "const http=require('http'),fs=require('fs'),path=require('path');const root=process.cwd();const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};http.createServer((req,res)=>{let u=decodeURIComponent(req.url.split('?')[0]);if(u==='/'||u==='')u='/index.html';const file=path.normalize(path.join(root,u));fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);res.end('Not found');return;}res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream'});res.end(data);});}).listen(8765,'127.0.0.1',()=>console.log('http://127.0.0.1:8765/'));"
-```
-
-打开：
+正式地址：
 
 ```text
-http://127.0.0.1:8765/?v=20260828d
+https://zenghanlu04-source.github.io/vr-training/
 ```
 
-登录后右上角显示“云端已连接”，数据就会保存到 CloudBase。
+仓库 `Settings` > `Pages` 保持：
 
-## 6. 部署上线
+- Source: `Deploy from a branch`
+- Branch: `main`
+- Folder: `/(root)`
 
-国内使用建议继续放在腾讯云：
+## 6. 加密备份
 
-- `静态网站托管`：上传当前文件夹
-- 或 `CloudBase Hosting`：用 CloudBase CLI 部署
+登录后，顶部提供：
 
-需要包含这些文件：
+- `备份数据`：导出 AES-256-GCM 加密的 `.vrbackup` 文件。
+- `恢复备份`：输入原备份密码后恢复业务数据。
 
-- `index.html`
-- `app.js`
-- `styles.css`
-- `config.js`
+备份包含培训、讲师、派遣结算和设备设置，不包含登录密码。建议每周备份一次，并分别保存到负责人电脑和可信网盘。备份密码遗失后无法恢复。
 
-部署完成后，把正式域名加入 CloudBase 安全域名/HTTP Referer 白名单，再用账号登录测试一次新增、编辑、删除。
+## 7. 上线验收
+
+1. 使用管理员账号登录，状态应显示 `云端已连接`。
+2. 创建一条测试培训，等待状态显示 `云端已保存`。
+3. 使用另一台电脑和另一个账号登录，确认能看到测试培训。
+4. 导出加密备份，并使用同一密码完成一次恢复验证。
+5. 确认无误后再录入真实身份证号和银行卡号。
