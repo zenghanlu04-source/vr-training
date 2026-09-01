@@ -389,7 +389,7 @@ async function handleAuth() {
     storageMode = "locked";
     currentAppUser = null;
     updateStorageStatus("登录失败");
-    message.textContent = getCloudErrorMessage(error);
+    message.textContent = await getCloudErrorMessage(error, account);
   } finally {
     loginButton.disabled = false;
     loginButton.textContent = "登录";
@@ -440,18 +440,48 @@ function getCloudBaseUserLabel(user, fallback = "") {
   return user?.username || user?.name || user?.email || user?.uid || fallback || "已认证用户";
 }
 
-function getCloudErrorMessage(error) {
+async function getCloudErrorMessage(error, account = "") {
   const raw = extractErrorText(error);
+  const errorCode = extractCloudErrorCode(error);
   if (/failed to fetch|cors|cross-origin|permission denied/i.test(raw)) {
     return "连接 CloudBase 失败。请确认安全来源已添加 zenghanlu04-source.github.io，并检查 PostgreSQL 的登录用户权限。";
   }
   if (/provider|not enabled|unauthorized_client/i.test(raw)) {
     return "CloudBase 用户名密码登录未开启，请在身份认证的登录方式中启用。";
   }
-  if (/invalid|password|credential/i.test(raw)) {
-    return "账号或密码不正确。请确认输入的是用户管理里创建时填写的用户名、邮箱或手机号，不是用户 ID；也可以在 CloudBase 里重置该用户密码后再试。";
+  if (/user.?not.?found|not.?exist|用户不存在/i.test(`${raw} ${errorCode}`)) {
+    return `CloudBase 未找到账号“${account}”。请核对用户管理中的“用户名”列，不要输入用户 ID。`;
   }
-  return raw || "登录失败，请检查账号、密码、CloudBase 安全来源和身份认证设置。";
+  if (/invalid|password|credential/i.test(raw)) {
+    const registered = await isCloudBaseUsernameRegistered(account);
+    if (registered === true) {
+      return `账号“${account}”已存在，但当前密码未通过验证（${errorCode || "INVALID_CREDENTIALS"}）。请在 CloudBase 用户管理里重新输入新密码后点击“确定”，再用该用户名登录。`;
+    }
+    return `账号或密码不正确（${errorCode || "CloudBase 未返回错误代码"}）。请确认输入的是用户管理里创建时填写的用户名、邮箱或手机号，不是用户 ID。`;
+  }
+  return `${raw || "登录失败，请检查账号、密码、CloudBase 安全来源和身份认证设置。"}${errorCode ? `（${errorCode}）` : ""}`;
+}
+
+async function isCloudBaseUsernameRegistered(account) {
+  const username = String(account || "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:+@-]{4,23}$/.test(username)) return null;
+  if (typeof cloudbaseAuth?.isUsernameRegistered !== "function") return null;
+  try {
+    const result = await cloudbaseAuth.isUsernameRegistered(username);
+    if (typeof result === "boolean") return result;
+    if (typeof result?.data === "boolean") return result.data;
+    if (typeof result?.data?.registered === "boolean") return result.data.registered;
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractCloudErrorCode(error) {
+  if (!error || typeof error === "string") return "";
+  const code = [error.category, error.code, error.status, error.name]
+    .find((value) => typeof value === "string" && value.trim());
+  return code || "";
 }
 
 function extractErrorText(error) {
