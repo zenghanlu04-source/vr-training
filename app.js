@@ -357,12 +357,13 @@ async function handleAuth() {
   message.textContent = "正在验证账号...";
   try {
     let loginResult = null;
+    const credentials = buildPasswordCredentials(account, password);
     if (typeof cloudbaseAuth.signInWithPassword === "function") {
-      loginResult = await cloudbaseAuth.signInWithPassword({ username: account, password });
+      loginResult = await cloudbaseAuth.signInWithPassword(credentials);
     } else if (typeof cloudbaseAuth.signInWithUsernameAndPassword === "function") {
       await cloudbaseAuth.signInWithUsernameAndPassword(account, password);
     } else if (typeof cloudbaseAuth.signIn === "function") {
-      await cloudbaseAuth.signIn({ username: account, password });
+      await cloudbaseAuth.signIn(credentials);
     } else {
       throw new Error("当前 CloudBase SDK 不支持账号密码登录");
     }
@@ -386,6 +387,17 @@ async function handleAuth() {
     loginButton.disabled = false;
     loginButton.textContent = "登录";
   }
+}
+
+function buildPasswordCredentials(account, password) {
+  const trimmed = account.trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return { email: trimmed, password };
+  }
+  if (/^1[3-9]\d{9}$/.test(trimmed)) {
+    return { phone: trimmed, password };
+  }
+  return { username: trimmed, password };
 }
 
 async function logout() {
@@ -430,7 +442,7 @@ function getCloudErrorMessage(error) {
     return "CloudBase 用户名密码登录未开启，请在身份认证的登录方式中启用。";
   }
   if (/invalid|password|credential/i.test(raw)) {
-    return "账号或密码不正确，请使用管理员在 CloudBase 中创建的账号。";
+    return "账号或密码不正确。请确认输入的是用户管理里创建时填写的用户名、邮箱或手机号，不是用户 ID；也可以在 CloudBase 里重置该用户密码后再试。";
   }
   return raw || "登录失败，请检查账号、密码、CloudBase 安全来源和身份认证设置。";
 }

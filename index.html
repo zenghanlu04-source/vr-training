@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VR培训排期管理系统</title>
-  <link rel="stylesheet" href="./styles.css?v=20260831t">
+  <link rel="stylesheet" href="./styles.css?v=20260901a">
 </head>
 <body>
   <div class="app-shell">
@@ -389,10 +389,10 @@
         </div>
       </div>
       <div class="preview-grid auth-form">
-        <label>账号<input id="auth-email" type="text" autocomplete="username" placeholder="请输入管理员创建的账号"></label>
+        <label>账号<input id="auth-email" type="text" autocomplete="username" placeholder="用户名 / 邮箱 / 手机号"></label>
         <label>密码<input id="auth-password" type="password" autocomplete="current-password" placeholder="请输入密码"></label>
       </div>
-      <p class="security-note">账号由管理员在 CloudBase 身份认证中创建。系统只保留安全登录状态，不保存明文密码。</p>
+      <p class="security-note">账号由管理员在 CloudBase 身份认证中创建。请使用创建时填写的用户名、邮箱或手机号，不是用户 ID。</p>
       <p class="muted-text" id="auth-message"></p>
       <div class="form-actions">
         <button class="primary" id="login-button">登录</button>
@@ -419,8 +419,8 @@
       </div>
     </section>
   </section>
-  <script src="./config.js?v=20260831t"></script>
+  <script src="./config.js?v=20260901a"></script>
   <script src="https://static.cloudbase.net/cloudbase-js-sdk/2.27.1/cloudbase.full.js"></script>
-  <script src="./app.js?v=20260831t"></script>
+  <script src="./app.js?v=20260901a"></script>
 </body>
 </html>
