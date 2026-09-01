@@ -193,7 +193,7 @@ async function initPersistence() {
       region: config.region || "ap-shanghai",
       accessKey: config.publishableKey || undefined,
     });
-    cloudbaseAuth = typeof cloudbaseApp.auth === "function" ? cloudbaseApp.auth() : cloudbaseApp.auth;
+    cloudbaseAuth = resolveCloudBaseAuth(cloudbaseApp);
     cloudbaseDb = cloudbaseApp.rdb();
     const currentUser = await getCloudBaseCurrentUser();
     if (!currentUser) {
@@ -213,6 +213,13 @@ async function initPersistence() {
     console.error(error);
     openAuthModal("CloudBase 初始化失败。为保护敏感信息，本地离线模式已停用，请检查环境 ID、安全来源和身份认证配置。", true);
   }
+}
+
+function resolveCloudBaseAuth(app) {
+  const auth = app?.auth;
+  if (!auth) return null;
+  if (typeof auth.signInWithPassword === "function" || typeof auth.getSession === "function") return auth;
+  return typeof auth === "function" ? auth.call(app) : auth;
 }
 
 async function loadCloudData() {
