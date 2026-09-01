@@ -1173,15 +1173,15 @@ function renderTrainingTable() {
       && (!province || item.province === province)
       && (!status || autoStatus === status)
       && (!risk || (risk === "risk" ? hasRisk : !hasRisk));
-  });
+  }).sort(compareTrainingsByDate);
   document.querySelector("#training-table").innerHTML = rows.map((item) => `
     <tr>
       <td><span class="id-chip">${formatTrainingSerial(item)}</span></td>
-      <td>${ownerChip(item.owner)}</td>
+      <td class="narrow-col business-col">${ownerChip(item.owner)}</td>
       <td>${item.name}</td>
       <td>${item.org || "—"}</td>
       <td>${item.city}</td>
-      <td>${item.people || "—"}</td>
+      <td class="narrow-col people-col">${item.people || "—"}</td>
       <td>${item.devices}台</td>
       <td>${formatTrainingDateRange(item)}</td>
       <td>${formatTrainingTeachers(item)}</td>
@@ -1279,25 +1279,24 @@ function renderDispatchTable() {
         <td><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
         <td>${row.training.name}</td>
         <td>${row.training.city}</td>
-        <td>${row.training.people || "—"}</td>
-        <td>${ownerChip(row.training.owner)}</td>
+        <td class="narrow-col people-col">${row.training.people || "—"}</td>
+        <td class="narrow-col business-col">${ownerChip(row.training.owner)}</td>
         <td>${teacherChip(row.teacher)}</td>
         <td>${formatTrainingDateRange(row.training)}</td>
-        <td>${isBlank(settlement.workflowScore) ? "待填写" : settlement.workflowScore}</td>
-        <td>${isBlank(settlement.surveyScore) ? "待填写" : settlement.surveyScore}</td>
-        <td>${dispatchScoreStatusBadge(row)}</td>
-        <td>${amounts.teachingDays}天</td>
+        <td>${scoreCell(settlement.workflowScore, row, 2)}</td>
+        <td>${scoreCell(settlement.surveyScore, row, 1)}</td>
+        <td class="narrow-col days-col">${amounts.teachingDays}天</td>
         <td>${amounts.wage}元</td>
         <td>${formatOptionalMoney(settlement.remoteAllowance)}</td>
         <td>${amounts.deduction}元</td>
         <td><button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
         <td>${settlementStatusBadge(settlementStatus)}</td>
-        <td class="action-cell"><button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button></td>
+        <td class="narrow-col operation-col action-cell"><button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button></td>
         <td>${reimbursement}元</td>
-        <td>${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
+        <td class="narrow-col reimbursement-status-col">${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="${selectionMode ? 20 : 19}">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
+  }).join("") : `<tr><td colspan="${selectionMode ? 19 : 18}">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
   renderDispatchBatchState(rows);
   document.querySelectorAll("[data-dispatch-select]").forEach((checkbox) => {
     checkbox.addEventListener("click", (event) => event.stopPropagation());
@@ -1388,7 +1387,7 @@ function getFilteredDispatchRows() {
     const matchesMonth = !selectedMonth || getTrainingMonthKey(row.training) === selectedMonth;
     const matchesSettlement = !selectedSettlementStatus || normalizeSettlementStatus(settlement.settlementStatus) === selectedSettlementStatus;
     return matchesTeacher && matchesMonth && matchesSettlement;
-  });
+  }).sort(compareDispatchRowsByDate);
 }
 
 function getDispatchTeacherOptions() {
@@ -1403,6 +1402,24 @@ function getDispatchMonthOptions() {
 
 function getTrainingMonthKey(training) {
   return training.startDate ? training.startDate.slice(0, 7) : "";
+}
+
+function trainingDatePriority(training) {
+  if (!training.startDate) return Number.MAX_SAFE_INTEGER;
+  const diff = parseDate(training.startDate) - today;
+  return diff >= 0 ? diff : Math.abs(diff) + (366 * dayMs);
+}
+
+function compareTrainingsByDate(a, b) {
+  const dateDiff = trainingDatePriority(a) - trainingDatePriority(b);
+  if (dateDiff !== 0) return dateDiff;
+  return formatTrainingSerial(a).localeCompare(formatTrainingSerial(b), "zh-CN", { numeric: true });
+}
+
+function compareDispatchRowsByDate(a, b) {
+  const dateDiff = compareTrainingsByDate(a.training, b.training);
+  if (dateDiff !== 0) return dateDiff;
+  return a.teacher.name.localeCompare(b.teacher.name, "zh-CN");
 }
 
 function isDispatchSelectionMode() {
@@ -1473,6 +1490,21 @@ function formatOptionalMoney(value) {
   return amount > 0 ? `${amount}元` : "无";
 }
 
+function isScoreOverdue(training, daysAfterEnd) {
+  if (!training.endDate) return false;
+  return today > addDays(parseDate(training.endDate), daysAfterEnd);
+}
+
+function getScoreDueDate(training, daysAfterEnd) {
+  return addDays(parseDate(training.endDate), daysAfterEnd);
+}
+
+function scoreCell(value, row, daysAfterEnd) {
+  if (!isBlank(value)) return `<span class="score-value">${value}</span>`;
+  const className = isScoreOverdue(row.training, daysAfterEnd) ? "score-overdue" : "score-pending";
+  return `<span class="score-chip ${className}">待填写</span>`;
+}
+
 function summarizeText(value) {
   const text = String(value || "").trim();
   if (!text) return "—";
@@ -1483,22 +1515,17 @@ function getDispatchAnomaly(row) {
   if (!row.training.endDate) return null;
   const settlement = getDispatchSettlement(row.key);
   const missing = [];
-  if (isBlank(settlement.workflowScore)) missing.push("工作流程评分");
-  if (isBlank(settlement.surveyScore)) missing.push("问卷满意度评分");
+  if (isBlank(settlement.workflowScore) && isScoreOverdue(row.training, 2)) {
+    missing.push({ label: "工作流程评分", dueDate: getScoreDueDate(row.training, 2) });
+  }
+  if (isBlank(settlement.surveyScore) && isScoreOverdue(row.training, 1)) {
+    missing.push({ label: "问卷满意度评分", dueDate: getScoreDueDate(row.training, 1) });
+  }
   if (!missing.length) return null;
 
-  const dueDate = addDays(parseDate(row.training.endDate), 2);
-  if (today <= dueDate) return null;
+  const dueDate = missing.reduce((earliest, item) => item.dueDate < earliest ? item.dueDate : earliest, missing[0].dueDate);
   const daysOverdue = Math.max(1, Math.floor((today - dueDate) / dayMs));
-  return { missing, dueDate, daysOverdue };
-}
-
-function dispatchScoreStatusBadge(row) {
-  const anomaly = getDispatchAnomaly(row);
-  if (anomaly) return `<span class="badge risk">异常</span>`;
-  const settlement = getDispatchSettlement(row.key);
-  if (isBlank(settlement.workflowScore) || isBlank(settlement.surveyScore)) return `<span class="badge status-pending">待填写</span>`;
-  return `<span class="badge status-using">正常</span>`;
+  return { missing: missing.map((item) => item.label), dueDate, daysOverdue };
 }
 
 function getTeacherDailyRate(rating) {
