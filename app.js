@@ -2,7 +2,7 @@ const today = startOfDay(new Date());
 const dayMs = 24 * 60 * 60 * 1000;
 const timelineStart = addDays(today, -1);
 const timelineDayCount = 16;
-const businessPeople = ["马帅", "武艺凡", "邢家琛", "熊俊宇", "师荣", "张伸", "张智真", "吴瑞"];
+const businessPeople = ["马帅", "武艺凡", "邢家琛", "熊俊宇", "师荣", "张伸", "张智真", "吴瑞", "张嘉慧"];
 const statuses = ["待排期", "已确认", "运输中", "使用中", "已完成"];
 const localStorageKey = "vr_schedule_manager_state_v1";
 const localAccountKey = "vr_schedule_manager_accounts_v1";
@@ -36,14 +36,18 @@ let dispatchSettlements = {
     surveyScore: 98,
     reimbursement: 260,
     reimbursementStatus: "已结算",
+    remoteAllowance: 0,
     adjustment: 100,
+    note: "",
   },
   "T003-S002": {
     workflowScore: 92,
     surveyScore: 95,
     reimbursement: 180,
     reimbursementStatus: "待审核",
+    remoteAllowance: 0,
     adjustment: 0,
+    note: "",
   },
 };
 
@@ -1186,7 +1190,7 @@ function renderDispatchTable() {
     const amounts = getDispatchAmounts(row);
     const reimbursement = Number(settlement.reimbursement || 0);
     return `
-      <tr>
+      <tr class="clickable-row" data-dispatch-row="${row.key}">
         <td><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
         <td>${row.training.name}</td>
         <td>${row.training.org || "—"}</td>
@@ -1200,19 +1204,27 @@ function renderDispatchTable() {
         <td>${dispatchScoreStatusBadge(row)}</td>
         <td>${amounts.teachingDays}天</td>
         <td>${amounts.wage}元</td>
-        <td>${reimbursement}元</td>
-        <td>${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
+        <td>${formatOptionalMoney(settlement.remoteAllowance)}</td>
         <td>${amounts.deduction}元</td>
         <td><button class="amount-link" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
+        <td class="note-cell">${summarizeText(settlement.note)}</td>
         <td class="action-cell"><button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button></td>
+        <td>${reimbursement}元</td>
+        <td>${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="18">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
+  }).join("") : `<tr><td colspan="20">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
   document.querySelectorAll("[data-edit-dispatch]").forEach((btn) => {
     btn.addEventListener("click", () => editDispatch(btn.dataset.editDispatch));
   });
   document.querySelectorAll("[data-amount-detail]").forEach((btn) => {
     btn.addEventListener("click", () => openAmountDetail(btn.dataset.amountDetail));
+  });
+  document.querySelectorAll("[data-dispatch-row]").forEach((rowEl) => {
+    rowEl.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, select, textarea")) return;
+      openDispatchDetail(rowEl.dataset.dispatchRow);
+    });
   });
 }
 
@@ -1284,7 +1296,9 @@ function getDispatchSettlement(key) {
     surveyScore: "",
     reimbursement: 0,
     reimbursementStatus: "待审核",
+    remoteAllowance: "",
     adjustment: 0,
+    note: "",
   };
 }
 
@@ -1301,6 +1315,17 @@ function formatTrainingDateRange(training) {
 
 function isBlank(value) {
   return value === undefined || value === null || String(value).trim() === "";
+}
+
+function formatOptionalMoney(value) {
+  const amount = Number(value || 0);
+  return amount > 0 ? `${amount}元` : "无";
+}
+
+function summarizeText(value) {
+  const text = String(value || "").trim();
+  if (!text) return "—";
+  return text.length > 18 ? `${text.slice(0, 18)}...` : text;
 }
 
 function getDispatchAnomaly(row) {
@@ -1341,13 +1366,17 @@ function getDispatchAmounts(row) {
   const teachingDays = getTrainingDays(row.training);
   const dayRate = getTeacherDailyRate(row.teacher.rating);
   const wage = dayRate * teachingDays;
+  const remoteAllowance = Math.max(0, Number(settlement.remoteAllowance || 0));
   const deduction = Math.max(0, Number(settlement.adjustment || 0));
+  const reimbursement = Math.max(0, Number(settlement.reimbursement || 0));
   return {
     teachingDays,
     dayRate,
     wage,
+    remoteAllowance,
     deduction,
-    payable: Math.max(0, wage - deduction),
+    reimbursement,
+    payable: Math.max(0, wage + remoteAllowance - deduction + reimbursement),
   };
 }
 
@@ -1369,19 +1398,52 @@ function openAmountDetail(key) {
   const row = getDispatchRows().find((item) => item.key === key);
   if (!row) return;
   const amounts = getDispatchAmounts(row);
+  const settlement = getDispatchSettlement(row.key);
   document.querySelector("#amount-modal-desc").textContent = `${row.training.name}｜${row.teacher.name}`;
   document.querySelector("#amount-detail").innerHTML = `
     <div><span>授课天数</span><strong>${amounts.teachingDays}天</strong></div>
     <div><span>日劳务标准</span><strong>${amounts.dayRate}元/天</strong></div>
     <div><span>劳务报酬</span><strong>${amounts.teachingDays} × ${amounts.dayRate} = ${amounts.wage}元</strong></div>
+    <div><span>偏远补贴</span><strong>${formatOptionalMoney(settlement.remoteAllowance)}</strong></div>
     <div><span>扣款</span><strong>-${amounts.deduction}元</strong></div>
-    <div class="amount-final"><span>应结金额</span><strong>${amounts.wage} - ${amounts.deduction} = ${amounts.payable}元</strong></div>
+    <div><span>报销费用</span><strong>${amounts.reimbursement}元</strong></div>
+    <div class="amount-final"><span>应结金额</span><strong>${amounts.wage} + ${amounts.remoteAllowance} - ${amounts.deduction} + ${amounts.reimbursement} = ${amounts.payable}元</strong></div>
   `;
   document.querySelector("#amount-modal").classList.remove("collapsed");
 }
 
 function closeAmountDetail() {
   document.querySelector("#amount-modal").classList.add("collapsed");
+}
+
+function openDispatchDetail(key) {
+  const row = getDispatchRows().find((item) => item.key === key);
+  if (!row) return;
+  const settlement = getDispatchSettlement(row.key);
+  const amounts = getDispatchAmounts(row);
+  document.querySelector("#dispatch-detail-desc").textContent = `${row.training.name}｜${row.teacher.name}`;
+  document.querySelector("#dispatch-detail").innerHTML = `
+    <div><span>ID</span><strong>${formatTrainingSerial(row.training)}</strong></div>
+    <div><span>客户机构名称</span><strong>${row.training.org || "—"}</strong></div>
+    <div><span>省市</span><strong>${row.training.city || "—"}</strong></div>
+    <div><span>商务</span><strong>${row.training.owner || "—"}</strong></div>
+    <div><span>讲师</span><strong>${row.teacher.name}</strong></div>
+    <div><span>培训日期</span><strong>${formatTrainingDateRange(row.training)}</strong></div>
+    <div><span>工作流程评分</span><strong>${isBlank(settlement.workflowScore) ? "待填写" : settlement.workflowScore}</strong></div>
+    <div><span>问卷满意度评分</span><strong>${isBlank(settlement.surveyScore) ? "待填写" : settlement.surveyScore}</strong></div>
+    <div><span>劳务报酬</span><strong>${amounts.wage}元</strong></div>
+    <div><span>偏远补贴</span><strong>${formatOptionalMoney(settlement.remoteAllowance)}</strong></div>
+    <div><span>扣款</span><strong>${amounts.deduction}元</strong></div>
+    <div><span>应结金额</span><strong>${amounts.payable}元</strong></div>
+    <div><span>备注</span><strong>${String(settlement.note || "").trim() || "—"}</strong></div>
+    <div><span>报销费用</span><strong>${amounts.reimbursement}元</strong></div>
+    <div><span>报销状态</span><strong>${normalizeReimbursementStatus(settlement.reimbursementStatus)}</strong></div>
+  `;
+  document.querySelector("#dispatch-detail-modal").classList.remove("collapsed");
+}
+
+function closeDispatchDetail() {
+  document.querySelector("#dispatch-detail-modal").classList.add("collapsed");
 }
 
 function editDispatch(key) {
@@ -1396,7 +1458,11 @@ function editDispatch(key) {
       el.value = normalizeReimbursementStatus(value);
       return;
     }
-    el.value = value ?? (el.type === "number" ? 0 : "待审核");
+    if (el.dataset.dispatchField === "remoteAllowance") {
+      el.value = value ? Number(value) : "";
+      return;
+    }
+    el.value = value ?? (el.type === "number" ? 0 : "");
   });
   document.querySelector("#dispatch-modal").classList.remove("collapsed");
 }
@@ -1421,7 +1487,7 @@ function saveDispatchSettlement() {
       data[key] = normalizeReimbursementStatus(el.value);
       return;
     }
-    data[key] = el.type === "number" ? Math.max(0, Number(el.value || 0)) : el.value;
+    data[key] = el.type === "number" ? Math.max(0, Number(el.value || 0)) : el.value.trim();
   });
   dispatchSettlements[keyToSave] = data;
   closeDispatchModal();
@@ -1713,6 +1779,45 @@ function renderTeacherOptions(selected = [], keyword = "") {
     .join("");
 }
 
+const locationHints = [
+  ["呼和浩特", "内蒙古", "呼和浩特"],
+  ["包头", "内蒙古", "包头"],
+  ["鄂尔多斯", "内蒙古", "鄂尔多斯"],
+  ["赤峰", "内蒙古", "赤峰"],
+  ["合肥", "安徽", "合肥"],
+  ["芜湖", "安徽", "芜湖"],
+  ["保定", "河北", "保定"],
+  ["沧州", "河北", "沧州"],
+  ["郑州", "河南", "郑州"],
+  ["洛阳", "河南", "洛阳"],
+  ["鹤壁", "河南", "鹤壁"],
+  ["长沙", "湖南", "长沙"],
+  ["岳阳", "湖南", "岳阳"],
+  ["大庆", "黑龙江", "大庆"],
+  ["鸡西", "黑龙江", "鸡西"],
+  ["汉中", "陕西", "汉中"],
+  ["榆林", "陕西", "榆林"],
+  ["西安", "陕西", "西安"],
+];
+
+function inferLocation(destination, organization, trainingName) {
+  const text = [destination, organization, trainingName].filter(Boolean).join(" ");
+  const hinted = locationHints.find(([keyword]) => text.includes(keyword));
+  let province = hinted?.[1] || "";
+  let city = hinted?.[2] || "";
+  const provinceMatch = text.match(/(内蒙古|广西|宁夏|新疆|西藏|[\u4e00-\u9fa5]{2,3})(省|自治区|市)/);
+
+  if (provinceMatch) {
+    province = provinceMatch[1];
+    const afterProvince = text.slice(provinceMatch.index + provinceMatch[0].length);
+    const cityMatch = afterProvince.match(/([\u4e00-\u9fa5]{2,7}?)(市|盟|地区)/);
+    if (cityMatch) city = cityMatch[1];
+  }
+  if (!city && hinted) city = hinted[2];
+  if (!province && hinted) province = hinted[1];
+  return { province: province || "安徽", city: city || "合肥" };
+}
+
 function parseSmartText() {
   const text = document.querySelector("#smart-input").value;
   const pick = (label) => {
@@ -1720,19 +1825,20 @@ function parseSmartText() {
     return match ? match[1].trim() : "";
   };
   const destination = pick("培训目的地") || pick("上课/住宿地点详细地址");
+  const organization = pick("机构名称") || pick("客户名称");
+  const trainingName = pick("培训班级名称") || pick("培训班名称");
   const dateText = pick("培训开始时间");
   const arriveText = pick("需到达时间");
   const startDate = normalizeDate(dateText);
   const arriveDate = normalizeDate(arriveText);
-  const provinceMatch = destination.match(/(.{2,3}省|.{2,3}市|.{2,3}自治区)/);
-  const cityMatch = destination.match(/省(.{2,4}市)|市(.{2,4}区)/);
+  const location = inferLocation(destination, organization, trainingName);
   previewData = {
     owner: "",
     teacherIds: [],
-    name: pick("培训班级名称"),
-    org: pick("机构名称"),
-    province: provinceMatch ? provinceMatch[1].replace("省", "") : "安徽",
-    city: cityMatch ? (cityMatch[1] || cityMatch[2] || "合肥市").replace("市", "") : "合肥",
+    name: trainingName,
+    org: organization,
+    province: location.province,
+    city: location.city,
     district: destination.includes("繁昌") ? "繁昌区" : "",
     address: pick("上课/住宿地点详细地址") || destination,
     people: numberFrom(pick("培训人数")),
@@ -1924,6 +2030,8 @@ function bindEvents() {
   document.querySelector("#dispatch-backdrop").addEventListener("click", closeDispatchModal);
   document.querySelector("#cancel-dispatch").addEventListener("click", closeDispatchModal);
   document.querySelector("#save-dispatch").addEventListener("click", saveDispatchSettlement);
+  document.querySelector("#dispatch-detail-backdrop").addEventListener("click", closeDispatchDetail);
+  document.querySelector("#close-dispatch-detail").addEventListener("click", closeDispatchDetail);
   document.querySelector("#dispatch-teacher-filter").addEventListener("change", renderDispatchTable);
   document.querySelector("#amount-backdrop").addEventListener("click", closeAmountDetail);
   document.querySelector("#close-amount").addEventListener("click", closeAmountDetail);

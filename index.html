@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VR培训排期管理系统</title>
-  <link rel="stylesheet" href="./styles.css?v=20260901b">
+  <link rel="stylesheet" href="./styles.css?v=20260901-xian">
 </head>
 <body>
   <div class="app-shell">
@@ -167,11 +167,13 @@
                     <th>评分状态</th>
                     <th>授课天数</th>
                     <th>劳务报酬</th>
-                    <th>报销费用</th>
-                    <th>报销状态</th>
+                    <th>偏远补贴</th>
                     <th>扣款</th>
                     <th>应结金额</th>
+                    <th>备注</th>
                     <th>操作</th>
+                    <th>报销费用</th>
+                    <th>报销状态</th>
                   </tr>
                 </thead>
                 <tbody id="dispatch-table"></tbody>
@@ -226,16 +228,34 @@
           <div class="preview-grid dispatch-form">
             <label>工作流程评分<input data-dispatch-field="workflowScore" type="number" min="0" max="100" placeholder="0-100"></label>
             <label>问卷满意度评分<input data-dispatch-field="surveyScore" type="number" min="0" max="100" placeholder="0-100"></label>
+            <label>偏远补贴<input data-dispatch-field="remoteAllowance" type="number" min="0" placeholder="默认无"></label>
+            <label>扣款<input data-dispatch-field="adjustment" type="number" min="0" value="0"></label>
+            <label class="wide-field">备注<textarea data-dispatch-field="note" rows="3" placeholder="可填写结算说明、特殊情况等"></textarea></label>
             <label>报销费用<input data-dispatch-field="reimbursement" type="number" min="0" value="0"></label>
             <label>报销状态<select data-dispatch-field="reimbursementStatus">
               <option value="待审核">待审核</option>
               <option value="已结算">已结算</option>
             </select></label>
-            <label>扣款<input data-dispatch-field="adjustment" type="number" min="0" value="0"></label>
           </div>
           <div class="form-actions">
             <button class="ghost" id="cancel-dispatch">取消</button>
             <button class="primary" id="save-dispatch">保存结算</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="create-modal collapsed" id="dispatch-detail-modal">
+        <div class="create-backdrop" id="dispatch-detail-backdrop"></div>
+        <section class="panel confirm-panel amount-panel">
+          <div class="panel-head">
+            <div>
+              <h2>讲师派遣详情</h2>
+              <p id="dispatch-detail-desc">点击任意派遣记录查看完整信息</p>
+            </div>
+          </div>
+          <div class="amount-detail" id="dispatch-detail"></div>
+          <div class="form-actions">
+            <button class="primary" id="close-dispatch-detail">知道了</button>
           </div>
         </section>
       </section>
@@ -246,7 +266,7 @@
           <div class="panel-head">
             <div>
               <h2>应结金额计算详情</h2>
-              <p id="amount-modal-desc">劳务报酬不包含报销费用</p>
+              <p id="amount-modal-desc">应结金额包含劳务、补贴、扣款与报销费用</p>
             </div>
           </div>
           <div class="amount-detail" id="amount-detail"></div>
@@ -421,6 +441,6 @@
   </section>
   <script src="./config.js?v=20260901e"></script>
   <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
-  <script src="./app.js?v=20260901e"></script>
+  <script src="./app.js?v=20260901-xian"></script>
 </body>
 </html>
