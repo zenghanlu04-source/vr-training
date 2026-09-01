@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VR培训排期管理系统</title>
-  <link rel="stylesheet" href="./styles.css?v=20260901-xian">
+  <link rel="stylesheet" href="./styles.css?v=20260901-settlement">
 </head>
 <body>
   <div class="app-shell">
@@ -142,21 +142,40 @@
               </div>
             </div>
             <div class="table-filters dispatch-filters">
+              <select id="dispatch-month-filter">
+                <option value="">全部月份</option>
+              </select>
               <select id="dispatch-teacher-filter">
                 <option value="">全部讲师</option>
+              </select>
+              <select id="dispatch-settlement-filter">
+                <option value="">全部结算状态</option>
+                <option value="待结算">待结算</option>
+                <option value="已提交">已提交</option>
+                <option value="已结算">已结算</option>
               </select>
               <div class="amount-summary">
                 <span>当前筛选应结总额</span>
                 <strong id="dispatch-total">0元</strong>
+              </div>
+              <div class="batch-settlement collapsed" id="batch-settlement">
+                <label><input id="dispatch-select-all" type="checkbox"> 全选当前结果</label>
+                <span id="dispatch-selected-total">已选0条 / 0元</span>
+                <select id="batch-settlement-status">
+                  <option value="已提交">改为已提交</option>
+                  <option value="已结算">改为已结算</option>
+                  <option value="待结算">改为待结算</option>
+                </select>
+                <button class="primary small-btn" id="batch-update-settlement">批量修改结算状态</button>
               </div>
             </div>
             <div class="table-wrap">
               <table class="dispatch-table">
                 <thead>
                   <tr>
+                    <th class="select-col collapsed-cell" id="dispatch-selection-head"></th>
                     <th>ID</th>
                     <th>培训班名称</th>
-                    <th>客户机构名称</th>
                     <th>省市</th>
                     <th>培训人数</th>
                     <th>商务</th>
@@ -170,7 +189,7 @@
                     <th>偏远补贴</th>
                     <th>扣款</th>
                     <th>应结金额</th>
-                    <th>备注</th>
+                    <th>结算状态</th>
                     <th>操作</th>
                     <th>报销费用</th>
                     <th>报销状态</th>
@@ -230,11 +249,16 @@
             <label>问卷满意度评分<input data-dispatch-field="surveyScore" type="number" min="0" max="100" placeholder="0-100"></label>
             <label>偏远补贴<input data-dispatch-field="remoteAllowance" type="number" min="0" placeholder="默认无"></label>
             <label>扣款<input data-dispatch-field="adjustment" type="number" min="0" value="0"></label>
+            <label>结算状态<select data-dispatch-field="settlementStatus">
+              <option value="待结算">待结算</option>
+              <option value="已提交">已提交</option>
+              <option value="已结算">已结算</option>
+            </select></label>
             <label class="wide-field">备注<textarea data-dispatch-field="note" rows="3" placeholder="可填写结算说明、特殊情况等"></textarea></label>
             <label>报销费用<input data-dispatch-field="reimbursement" type="number" min="0" value="0"></label>
             <label>报销状态<select data-dispatch-field="reimbursementStatus">
               <option value="待审核">待审核</option>
-              <option value="已结算">已结算</option>
+              <option value="已付款">已付款</option>
             </select></label>
           </div>
           <div class="form-actions">
@@ -246,14 +270,14 @@
 
       <section class="create-modal collapsed" id="dispatch-detail-modal">
         <div class="create-backdrop" id="dispatch-detail-backdrop"></div>
-        <section class="panel confirm-panel amount-panel">
+        <section class="panel confirm-panel dispatch-detail-panel">
           <div class="panel-head">
             <div>
               <h2>讲师派遣详情</h2>
               <p id="dispatch-detail-desc">点击任意派遣记录查看完整信息</p>
             </div>
           </div>
-          <div class="amount-detail" id="dispatch-detail"></div>
+          <div class="detail-content" id="dispatch-detail"></div>
           <div class="form-actions">
             <button class="primary" id="close-dispatch-detail">知道了</button>
           </div>
@@ -266,7 +290,7 @@
           <div class="panel-head">
             <div>
               <h2>应结金额计算详情</h2>
-              <p id="amount-modal-desc">应结金额包含劳务、补贴、扣款与报销费用</p>
+              <p id="amount-modal-desc">应结金额包含劳务、补贴与扣款，报销费用单独结算</p>
             </div>
           </div>
           <div class="amount-detail" id="amount-detail"></div>
@@ -285,6 +309,7 @@
                 <p>讲师派遣能力、服务质量和基础档案维护</p>
               </div>
             </div>
+            <div class="rate-settings" id="teacher-rate-settings"></div>
             <div class="table-filters">
               <input id="teacher-search" placeholder="搜索讲师姓名">
             </div>
@@ -301,6 +326,7 @@
                     <th>临时取消（次数）</th>
                     <th>客户投诉（次数）</th>
                     <th>讲师评级</th>
+                    <th>讲师基础画像</th>
                     <th>师资状态</th>
                     <th>操作</th>
                   </tr>
@@ -348,6 +374,7 @@
             <label>身份证号<input data-teacher-field="idCard" placeholder="隐藏信息"></label>
             <label>银行卡号<input data-teacher-field="bankCard" placeholder="隐藏信息"></label>
             <label>开户行<input data-teacher-field="bankName" placeholder="隐藏信息"></label>
+            <label class="wide-field">讲师基础画像<textarea data-teacher-field="profile" rows="3" placeholder="例如：擅长农产品电商、课堂互动强、适合西北地区现场培训"></textarea></label>
           </div>
         </section>
       </section>
@@ -441,6 +468,6 @@
   </section>
   <script src="./config.js?v=20260901e"></script>
   <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
-  <script src="./app.js?v=20260901-xian"></script>
+  <script src="./app.js?v=20260901-settlement"></script>
 </body>
 </html>

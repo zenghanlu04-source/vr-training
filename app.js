@@ -10,9 +10,18 @@ const rememberLoginKey = "vr_schedule_manager_remember_login_v1";
 const backupFormat = "vr-training-encrypted-backup";
 const backupVersion = 1;
 const backupIterations = 250000;
+const defaultTeacherRates = {
+  "普通": 400,
+  "铜牌": 500,
+  "银牌": 600,
+  "金牌": 700,
+  "钻石": 800,
+};
 
 let totalDevices = 600;
+let teacherRates = { ...defaultTeacherRates };
 let currentPage = "overview";
+let selectedDispatchKeys = new Set();
 let draftSources = [
   { type: "北京仓", count: 30 },
   { type: "待调配", count: 20 },
@@ -35,9 +44,10 @@ let dispatchSettlements = {
     workflowScore: 96,
     surveyScore: 98,
     reimbursement: 260,
-    reimbursementStatus: "已结算",
+    reimbursementStatus: "已付款",
     remoteAllowance: 0,
     adjustment: 100,
+    settlementStatus: "已结算",
     note: "",
   },
   "T003-S002": {
@@ -47,6 +57,7 @@ let dispatchSettlements = {
     reimbursementStatus: "待审核",
     remoteAllowance: 0,
     adjustment: 0,
+    settlementStatus: "待结算",
     note: "",
   },
 };
@@ -67,6 +78,7 @@ let teachers = [
     idCard: "隐藏",
     bankCard: "隐藏",
     bankName: "隐藏",
+    profile: "课堂组织稳定，适合省级农业院校现场培训。",
   },
   {
     id: "S002",
@@ -83,6 +95,7 @@ let teachers = [
     idCard: "隐藏",
     bankCard: "隐藏",
     bankName: "隐藏",
+    profile: "执行力强，适合多讲师协同和高强度排期。",
   },
   {
     id: "S003",
@@ -99,6 +112,7 @@ let teachers = [
     idCard: "隐藏",
     bankCard: "隐藏",
     bankName: "隐藏",
+    profile: "设备沟通细致，适合华北地区中小班培训。",
   },
   {
     id: "S004",
@@ -115,6 +129,7 @@ let teachers = [
     idCard: "隐藏",
     bankCard: "隐藏",
     bankName: "隐藏",
+    profile: "历史培训经验较多，目前状态为离职。",
   },
 ];
 
@@ -157,11 +172,14 @@ function updateStorageStatus(message) {
 }
 
 function getDataSnapshot() {
-  return { totalDevices, trainings, teachers, dispatchSettlements };
+  return { totalDevices, teacherRates, trainings, teachers, dispatchSettlements };
 }
 
 function applyDataSnapshot(snapshot = {}) {
   if (Number.isFinite(Number(snapshot.totalDevices))) totalDevices = Number(snapshot.totalDevices);
+  if (snapshot.teacherRates && typeof snapshot.teacherRates === "object") {
+    teacherRates = normalizeTeacherRates(snapshot.teacherRates);
+  }
   if (Array.isArray(snapshot.trainings)) trainings = snapshot.trainings;
   if (Array.isArray(snapshot.teachers)) teachers = snapshot.teachers;
   if (snapshot.dispatchSettlements && typeof snapshot.dispatchSettlements === "object") {
@@ -247,14 +265,19 @@ async function loadCloudData() {
   const nextTeachers = [];
   const nextSettlements = {};
   let nextTotalDevices = totalDevices;
+  let nextTeacherRates = teacherRates;
   rows.forEach((row) => {
-    if (row.collection === "settings" && row.record_key === "main") nextTotalDevices = Number(row.data.totalDevices) || totalDevices;
+    if (row.collection === "settings" && row.record_key === "main") {
+      nextTotalDevices = Number(row.data.totalDevices) || totalDevices;
+      nextTeacherRates = normalizeTeacherRates(row.data.teacherRates || teacherRates);
+    }
     if (row.collection === "trainings") nextTrainings.push(row.data);
     if (row.collection === "teachers") nextTeachers.push(row.data);
     if (row.collection === "dispatch_settlements") nextSettlements[row.record_key] = row.data;
   });
   applyDataSnapshot({
     totalDevices: nextTotalDevices,
+    teacherRates: nextTeacherRates,
     trainings: nextTrainings.length ? nextTrainings.sort((a, b) => Number(a.serial || 0) - Number(b.serial || 0)) : trainings,
     teachers: nextTeachers.length ? nextTeachers : teachers,
     dispatchSettlements: Object.keys(nextSettlements).length ? nextSettlements : dispatchSettlements,
@@ -305,7 +328,7 @@ async function deleteRecord(collection, recordKey) {
 }
 
 function saveSettings() {
-  return upsertRecord("settings", "main", { totalDevices });
+  return upsertRecord("settings", "main", { totalDevices, teacherRates });
 }
 
 function saveTrainingRecord(item) {
@@ -318,6 +341,15 @@ function saveTeacherRecord(item) {
 
 function saveDispatchSettlementRecord(key, data) {
   return upsertRecord("dispatch_settlements", key, data);
+}
+
+function normalizeTeacherRates(rates = {}) {
+  return Object.fromEntries(
+    Object.entries(defaultTeacherRates).map(([rating, fallback]) => {
+      const value = Number(rates[rating]);
+      return [rating, Number.isFinite(value) && value >= 0 ? value : fallback];
+    }),
+  );
 }
 
 function normalizeCloudRows(result) {
@@ -631,6 +663,18 @@ function downloadJsonFile(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+function downloadTextFile(text, filename, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function backupFilename() {
   const stamp = new Date().toLocaleString("sv-SE").replace(" ", "_").replaceAll(":", "-");
   return `VR培训排期备份_${stamp}.vrbackup`;
@@ -699,7 +743,10 @@ async function restoreBackupPayload(snapshot) {
     ...previousTrainings.filter((item) => !nextTrainingIds.has(item.id)).map((item) => deleteRecord("trainings", item.id)),
     ...previousTeachers.filter((item) => !nextTeacherIds.has(item.id)).map((item) => deleteRecord("teachers", item.id)),
     ...previousSettlementKeys.filter((key) => !nextSettlementKeys.has(key)).map((key) => deleteRecord("dispatch_settlements", key)),
-    upsertRecord("settings", "main", { totalDevices: Number(snapshot.totalDevices) || 0 }),
+    upsertRecord("settings", "main", {
+      totalDevices: Number(snapshot.totalDevices) || 0,
+      teacherRates: normalizeTeacherRates(snapshot.teacherRates || teacherRates),
+    }),
     ...snapshot.trainings.map((item) => upsertRecord("trainings", item.id, item)),
     ...snapshot.teachers.map((item) => upsertRecord("teachers", item.id, item)),
     ...Object.entries(snapshot.dispatchSettlements).map(([key, value]) => upsertRecord("dispatch_settlements", key, value)),
@@ -1157,7 +1204,7 @@ function renderTrainingTable() {
 function renderTeacherTable() {
   const keyword = document.querySelector("#teacher-search")?.value.trim() || "";
   const rows = teachers
-    .filter((teacher) => !keyword || teacher.name.includes(keyword))
+    .filter((teacher) => !keyword || teacher.name.includes(keyword) || String(teacher.profile || "").includes(keyword))
     .sort((a, b) => Number(a.teacherStatus === "离职") - Number(b.teacherStatus === "离职"));
   document.querySelector("#teacher-table").innerHTML = rows.map((teacher) => `
     <tr>
@@ -1170,6 +1217,7 @@ function renderTeacherTable() {
       <td>${teacher.cancellations}</td>
       <td>${teacher.complaints}</td>
       <td>${teacherRatingBadge(teacher.rating)}</td>
+      <td class="profile-cell">${summarizeText(teacher.profile)}</td>
       <td>${teacherStatusBadge(teacher.teacherStatus)}</td>
       <td class="action-cell">
         <button class="ghost small-btn" data-edit-teacher="${teacher.id}">编辑</button>
@@ -1181,19 +1229,55 @@ function renderTeacherTable() {
   });
 }
 
+function renderTeacherRateSettings() {
+  const el = document.querySelector("#teacher-rate-settings");
+  if (!el) return;
+  el.innerHTML = `
+    <div>
+      <h3>讲师基础费用</h3>
+      <p>修改后，派遣应结金额会按新标准重新计算</p>
+    </div>
+    <div class="rate-grid">
+      ${Object.keys(defaultTeacherRates).map((rating) => `
+        <label>${rating}
+          <input data-teacher-rate="${rating}" type="number" min="0" value="${teacherRates[rating]}">
+        </label>
+      `).join("")}
+    </div>
+  `;
+  document.querySelectorAll("[data-teacher-rate]").forEach((input) => {
+    input.addEventListener("input", () => {
+      teacherRates[input.dataset.teacherRate] = Math.max(0, Number(input.value || 0));
+      renderDispatchTable();
+    });
+    input.addEventListener("change", () => {
+      teacherRates = normalizeTeacherRates(teacherRates);
+      renderTeacherRateSettings();
+      renderDispatchTable();
+      void saveSettings();
+    });
+  });
+}
+
 function renderDispatchTable() {
   const rows = getFilteredDispatchRows();
+  const selectionMode = isDispatchSelectionMode();
+  syncSelectedDispatchKeys(rows, selectionMode);
   const totalPayable = rows.reduce((sum, row) => sum + getDispatchAmounts(row).payable, 0);
   document.querySelector("#dispatch-total").textContent = `${totalPayable}元`;
+  document.querySelector("#dispatch-selection-head")?.classList.toggle("collapsed-cell", !selectionMode);
+  document.querySelector("#batch-settlement")?.classList.toggle("collapsed", !selectionMode);
   document.querySelector("#dispatch-table").innerHTML = rows.length ? rows.map((row) => {
     const settlement = getDispatchSettlement(row.key);
     const amounts = getDispatchAmounts(row);
     const reimbursement = Number(settlement.reimbursement || 0);
+    const settlementStatus = normalizeSettlementStatus(settlement.settlementStatus);
+    const selected = selectedDispatchKeys.has(row.key);
     return `
-      <tr class="clickable-row" data-dispatch-row="${row.key}">
+      <tr class="clickable-row ${settlementStatus === "已结算" ? "settled-row" : ""}" data-dispatch-row="${row.key}">
+        ${selectionMode ? `<td class="select-col"><input type="checkbox" data-dispatch-select="${row.key}" ${selected ? "checked" : ""}></td>` : ""}
         <td><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
         <td>${row.training.name}</td>
-        <td>${row.training.org || "—"}</td>
         <td>${row.training.city}</td>
         <td>${row.training.people || "—"}</td>
         <td>${ownerChip(row.training.owner)}</td>
@@ -1206,14 +1290,26 @@ function renderDispatchTable() {
         <td>${amounts.wage}元</td>
         <td>${formatOptionalMoney(settlement.remoteAllowance)}</td>
         <td>${amounts.deduction}元</td>
-        <td><button class="amount-link" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
-        <td class="note-cell">${summarizeText(settlement.note)}</td>
+        <td><button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
+        <td>${settlementStatusBadge(settlementStatus)}</td>
         <td class="action-cell"><button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button></td>
         <td>${reimbursement}元</td>
         <td>${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="20">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
+  }).join("") : `<tr><td colspan="${selectionMode ? 20 : 19}">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
+  renderDispatchBatchState(rows);
+  document.querySelectorAll("[data-dispatch-select]").forEach((checkbox) => {
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        selectedDispatchKeys.add(checkbox.dataset.dispatchSelect);
+      } else {
+        selectedDispatchKeys.delete(checkbox.dataset.dispatchSelect);
+      }
+      renderDispatchBatchState(rows);
+    });
+  });
   document.querySelectorAll("[data-edit-dispatch]").forEach((btn) => {
     btn.addEventListener("click", () => editDispatch(btn.dataset.editDispatch));
   });
@@ -1229,15 +1325,22 @@ function renderDispatchTable() {
 }
 
 function renderDispatchFilters() {
-  const select = document.querySelector("#dispatch-teacher-filter");
-  if (!select) return;
-  const selected = select.value;
+  const monthSelect = document.querySelector("#dispatch-month-filter");
+  const teacherSelect = document.querySelector("#dispatch-teacher-filter");
+  if (!teacherSelect) return;
+  if (monthSelect) {
+    const selectedMonth = monthSelect.value;
+    const months = getDispatchMonthOptions();
+    monthSelect.innerHTML = `<option value="">全部月份</option>${months.map((month) => `<option value="${month}" ${month === selectedMonth ? "selected" : ""}>${month}</option>`).join("")}`;
+    if (selectedMonth && !months.includes(selectedMonth)) monthSelect.value = "";
+  }
+  const selected = teacherSelect.value;
   const options = getDispatchTeacherOptions()
     .map((teacher) => `<option value="${teacher.id}" ${teacher.id === selected ? "selected" : ""}>${teacher.name}</option>`)
     .join("");
-  select.innerHTML = `<option value="">全部讲师</option>${options}`;
+  teacherSelect.innerHTML = `<option value="">全部讲师</option>${options}`;
   if (selected && !getDispatchTeacherOptions().some((teacher) => teacher.id === selected)) {
-    select.value = "";
+    teacherSelect.value = "";
   }
 }
 
@@ -1277,13 +1380,60 @@ function getDispatchRows() {
 
 function getFilteredDispatchRows() {
   const selectedTeacherId = document.querySelector("#dispatch-teacher-filter")?.value || "";
-  const rows = getDispatchRows();
-  return selectedTeacherId ? rows.filter((row) => row.teacher.id === selectedTeacherId) : rows;
+  const selectedMonth = document.querySelector("#dispatch-month-filter")?.value || "";
+  const selectedSettlementStatus = document.querySelector("#dispatch-settlement-filter")?.value || "";
+  return getDispatchRows().filter((row) => {
+    const settlement = getDispatchSettlement(row.key);
+    const matchesTeacher = !selectedTeacherId || row.teacher.id === selectedTeacherId;
+    const matchesMonth = !selectedMonth || getTrainingMonthKey(row.training) === selectedMonth;
+    const matchesSettlement = !selectedSettlementStatus || normalizeSettlementStatus(settlement.settlementStatus) === selectedSettlementStatus;
+    return matchesTeacher && matchesMonth && matchesSettlement;
+  });
 }
 
 function getDispatchTeacherOptions() {
   const ids = new Set(getDispatchRows().map((row) => row.teacher.id));
   return teachers.filter((teacher) => ids.has(teacher.id));
+}
+
+function getDispatchMonthOptions() {
+  return [...new Set(getDispatchRows().map((row) => getTrainingMonthKey(row.training)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a));
+}
+
+function getTrainingMonthKey(training) {
+  return training.startDate ? training.startDate.slice(0, 7) : "";
+}
+
+function isDispatchSelectionMode() {
+  return Boolean(
+    document.querySelector("#dispatch-month-filter")?.value
+    || document.querySelector("#dispatch-settlement-filter")?.value,
+  );
+}
+
+function syncSelectedDispatchKeys(rows, selectionMode) {
+  if (!selectionMode) {
+    selectedDispatchKeys.clear();
+    return;
+  }
+  const visibleKeys = new Set(rows.map((row) => row.key));
+  selectedDispatchKeys = new Set([...selectedDispatchKeys].filter((key) => visibleKeys.has(key)));
+}
+
+function renderDispatchBatchState(rows) {
+  const visibleKeys = rows.map((row) => row.key);
+  const checkedCount = visibleKeys.filter((key) => selectedDispatchKeys.has(key)).length;
+  const selectedTotal = rows
+    .filter((row) => selectedDispatchKeys.has(row.key))
+    .reduce((sum, row) => sum + getDispatchAmounts(row).payable, 0);
+  const totalEl = document.querySelector("#dispatch-selected-total");
+  if (totalEl) totalEl.textContent = `已选${checkedCount}条 / ${selectedTotal}元`;
+  const allCheckbox = document.querySelector("#dispatch-select-all");
+  if (allCheckbox) {
+    allCheckbox.checked = Boolean(visibleKeys.length && checkedCount === visibleKeys.length);
+    allCheckbox.indeterminate = checkedCount > 0 && checkedCount < visibleKeys.length;
+  }
 }
 
 function getDispatchKey(trainingId, teacherId) {
@@ -1298,6 +1448,7 @@ function getDispatchSettlement(key) {
     reimbursementStatus: "待审核",
     remoteAllowance: "",
     adjustment: 0,
+    settlementStatus: "待结算",
     note: "",
   };
 }
@@ -1351,14 +1502,7 @@ function dispatchScoreStatusBadge(row) {
 }
 
 function getTeacherDailyRate(rating) {
-  const rateMap = {
-    "普通": 400,
-    "铜牌": 500,
-    "银牌": 600,
-    "金牌": 700,
-    "钻石": 800,
-  };
-  return rateMap[rating] || 400;
+  return Number(teacherRates[rating]) || defaultTeacherRates[rating] || defaultTeacherRates["普通"];
 }
 
 function getDispatchAmounts(row) {
@@ -1376,22 +1520,36 @@ function getDispatchAmounts(row) {
     remoteAllowance,
     deduction,
     reimbursement,
-    payable: Math.max(0, wage + remoteAllowance - deduction + reimbursement),
+    payable: Math.max(0, wage + remoteAllowance - deduction),
   };
 }
 
 function normalizeReimbursementStatus(status) {
-  return status === "已结算" || status === "已通过" || status === "已打款" ? "已结算" : "待审核";
+  return status === "已付款" || status === "已结算" || status === "已通过" || status === "已打款" ? "已付款" : "待审核";
 }
 
 function reimbursementStatusBadge(status = "待审核") {
   const normalized = normalizeReimbursementStatus(status);
   const classMap = {
     "待审核": "status-pending",
-    "已结算": "status-using",
+    "已付款": "status-using",
   };
   const className = classMap[normalized] || "";
   return `<span class="badge ${className}">${normalized}</span>`;
+}
+
+function normalizeSettlementStatus(status) {
+  return ["已结算", "已提交", "待结算"].includes(status) ? status : "待结算";
+}
+
+function settlementStatusBadge(status = "待结算") {
+  const normalized = normalizeSettlementStatus(status);
+  const classMap = {
+    "待结算": "status-pending",
+    "已提交": "status-confirmed",
+    "已结算": "status-settled",
+  };
+  return `<span class="badge ${classMap[normalized] || ""}">${normalized}</span>`;
 }
 
 function openAmountDetail(key) {
@@ -1407,7 +1565,7 @@ function openAmountDetail(key) {
     <div><span>偏远补贴</span><strong>${formatOptionalMoney(settlement.remoteAllowance)}</strong></div>
     <div><span>扣款</span><strong>-${amounts.deduction}元</strong></div>
     <div><span>报销费用</span><strong>${amounts.reimbursement}元</strong></div>
-    <div class="amount-final"><span>应结金额</span><strong>${amounts.wage} + ${amounts.remoteAllowance} - ${amounts.deduction} + ${amounts.reimbursement} = ${amounts.payable}元</strong></div>
+    <div class="amount-final"><span>应结金额</span><strong>${amounts.wage} + ${amounts.remoteAllowance} - ${amounts.deduction} = ${amounts.payable}元</strong></div>
   `;
   document.querySelector("#amount-modal").classList.remove("collapsed");
 }
@@ -1423,23 +1581,59 @@ function openDispatchDetail(key) {
   const amounts = getDispatchAmounts(row);
   document.querySelector("#dispatch-detail-desc").textContent = `${row.training.name}｜${row.teacher.name}`;
   document.querySelector("#dispatch-detail").innerHTML = `
-    <div><span>ID</span><strong>${formatTrainingSerial(row.training)}</strong></div>
-    <div><span>客户机构名称</span><strong>${row.training.org || "—"}</strong></div>
-    <div><span>省市</span><strong>${row.training.city || "—"}</strong></div>
-    <div><span>商务</span><strong>${row.training.owner || "—"}</strong></div>
-    <div><span>讲师</span><strong>${row.teacher.name}</strong></div>
-    <div><span>培训日期</span><strong>${formatTrainingDateRange(row.training)}</strong></div>
-    <div><span>工作流程评分</span><strong>${isBlank(settlement.workflowScore) ? "待填写" : settlement.workflowScore}</strong></div>
-    <div><span>问卷满意度评分</span><strong>${isBlank(settlement.surveyScore) ? "待填写" : settlement.surveyScore}</strong></div>
-    <div><span>劳务报酬</span><strong>${amounts.wage}元</strong></div>
-    <div><span>偏远补贴</span><strong>${formatOptionalMoney(settlement.remoteAllowance)}</strong></div>
-    <div><span>扣款</span><strong>${amounts.deduction}元</strong></div>
-    <div><span>应结金额</span><strong>${amounts.payable}元</strong></div>
-    <div><span>备注</span><strong>${String(settlement.note || "").trim() || "—"}</strong></div>
-    <div><span>报销费用</span><strong>${amounts.reimbursement}元</strong></div>
-    <div><span>报销状态</span><strong>${normalizeReimbursementStatus(settlement.reimbursementStatus)}</strong></div>
+    ${detailSection("培训信息", [
+      ["ID", formatTrainingSerial(row.training)],
+      ["培训班名称", row.training.name],
+      ["客户机构名称", row.training.org || "—"],
+      ["省市", row.training.city || "—"],
+      ["培训人数", row.training.people || "—"],
+      ["详细地址", row.training.address || row.training.mailAddress || "—"],
+      ["培训日期", formatTrainingDateRange(row.training)],
+      ["商务", row.training.owner || "—"],
+    ])}
+    ${detailSection("讲师档案", [
+      ["讲师", row.teacher.name],
+      ["手机号", row.teacher.phone || "—"],
+      ["常驻城市", row.teacher.city || "—"],
+      ["可出差范围", row.teacher.travelRange || "—"],
+      ["讲师评级", row.teacher.rating || "—"],
+      ["讲师基础画像", row.teacher.profile || "—"],
+      ["身份证号", row.teacher.idCard || "—"],
+      ["银行卡号", row.teacher.bankCard || "—"],
+      ["开户行", row.teacher.bankName || "—"],
+    ])}
+    ${detailSection("结算信息", [
+      ["工作流程评分", isBlank(settlement.workflowScore) ? "待填写" : settlement.workflowScore],
+      ["问卷满意度评分", isBlank(settlement.surveyScore) ? "待填写" : settlement.surveyScore],
+      ["授课天数", `${amounts.teachingDays}天`],
+      ["日劳务标准", `${amounts.dayRate}元/天`],
+      ["劳务报酬", `${amounts.wage}元`],
+      ["偏远补贴", formatOptionalMoney(settlement.remoteAllowance)],
+      ["扣款", `${amounts.deduction}元`],
+      ["应结金额", `${amounts.payable}元`],
+      ["结算状态", normalizeSettlementStatus(settlement.settlementStatus)],
+      ["报销费用", `${amounts.reimbursement}元`],
+      ["报销状态", normalizeReimbursementStatus(settlement.reimbursementStatus)],
+      ["备注", String(settlement.note || "").trim() || "—"],
+    ])}
   `;
   document.querySelector("#dispatch-detail-modal").classList.remove("collapsed");
+}
+
+function detailSection(title, items) {
+  return `
+    <section class="detail-section">
+      <h3>${title}</h3>
+      <div class="detail-grid">
+        ${items.map(([label, value]) => `
+          <div class="detail-item">
+            <span>${label}</span>
+            <strong>${value}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function closeDispatchDetail() {
@@ -1456,6 +1650,10 @@ function editDispatch(key) {
     const value = settlement[el.dataset.dispatchField];
     if (el.dataset.dispatchField === "reimbursementStatus") {
       el.value = normalizeReimbursementStatus(value);
+      return;
+    }
+    if (el.dataset.dispatchField === "settlementStatus") {
+      el.value = normalizeSettlementStatus(value);
       return;
     }
     if (el.dataset.dispatchField === "remoteAllowance") {
@@ -1487,6 +1685,10 @@ function saveDispatchSettlement() {
       data[key] = normalizeReimbursementStatus(el.value);
       return;
     }
+    if (key === "settlementStatus") {
+      data[key] = normalizeSettlementStatus(el.value);
+      return;
+    }
     data[key] = el.type === "number" ? Math.max(0, Number(el.value || 0)) : el.value.trim();
   });
   dispatchSettlements[keyToSave] = data;
@@ -1494,6 +1696,34 @@ function saveDispatchSettlement() {
   renderDispatchTable();
   renderAnomalyTable();
   void saveDispatchSettlementRecord(keyToSave, data);
+}
+
+function toggleSelectAllDispatch(checked) {
+  const rows = getFilteredDispatchRows();
+  if (checked) {
+    rows.forEach((row) => selectedDispatchKeys.add(row.key));
+  } else {
+    rows.forEach((row) => selectedDispatchKeys.delete(row.key));
+  }
+  renderDispatchTable();
+}
+
+function batchUpdateSettlementStatus() {
+  const status = normalizeSettlementStatus(document.querySelector("#batch-settlement-status")?.value);
+  const keys = [...selectedDispatchKeys];
+  if (!keys.length) {
+    alert("请先勾选需要修改的派遣记录。");
+    return;
+  }
+  keys.forEach((key) => {
+    dispatchSettlements[key] = {
+      ...getDispatchSettlement(key),
+      settlementStatus: status,
+    };
+  });
+  renderDispatchTable();
+  renderAnomalyTable();
+  void Promise.all(keys.map((key) => saveDispatchSettlementRecord(key, dispatchSettlements[key])));
 }
 
 function teacherRatingBadge(rating) {
@@ -1589,6 +1819,7 @@ function createTeacher() {
     idCard: data.idCard,
     bankCard: data.bankCard,
     bankName: data.bankName,
+    profile: data.profile,
   };
   if (editingTeacherId) {
     teachers = teachers.map((teacher) => teacher.id === editingTeacherId ? nextTeacher : teacher);
@@ -2032,7 +2263,11 @@ function bindEvents() {
   document.querySelector("#save-dispatch").addEventListener("click", saveDispatchSettlement);
   document.querySelector("#dispatch-detail-backdrop").addEventListener("click", closeDispatchDetail);
   document.querySelector("#close-dispatch-detail").addEventListener("click", closeDispatchDetail);
+  document.querySelector("#dispatch-month-filter").addEventListener("change", renderDispatchTable);
   document.querySelector("#dispatch-teacher-filter").addEventListener("change", renderDispatchTable);
+  document.querySelector("#dispatch-settlement-filter").addEventListener("change", renderDispatchTable);
+  document.querySelector("#dispatch-select-all").addEventListener("change", (event) => toggleSelectAllDispatch(event.target.checked));
+  document.querySelector("#batch-update-settlement").addEventListener("click", batchUpdateSettlementStatus);
   document.querySelector("#amount-backdrop").addEventListener("click", closeAmountDetail);
   document.querySelector("#close-amount").addEventListener("click", closeAmountDetail);
   document.querySelector("#login-button").addEventListener("click", handleAuth);
@@ -2076,6 +2311,7 @@ function renderAll() {
   renderGantt();
   renderPreview();
   renderTrainingTable();
+  renderTeacherRateSettings();
   renderTeacherTable();
   renderDispatchFilters();
   renderDispatchTable();
