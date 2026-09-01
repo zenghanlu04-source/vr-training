@@ -425,13 +425,19 @@ async function logout() {
 
 async function getCloudBaseCurrentUser() {
   if (!cloudbaseAuth) return null;
+  if (typeof cloudbaseAuth.getSession === "function") {
+    const sessionResult = await cloudbaseAuth.getSession();
+    const sessionUser = sessionResult?.data?.session?.user || sessionResult?.session?.user;
+    if (sessionUser) return sessionUser;
+  }
+  if (typeof cloudbaseAuth.getUser === "function") {
+    const userResult = await cloudbaseAuth.getUser();
+    const authUser = userResult?.data?.user || userResult?.user;
+    if (authUser) return authUser;
+  }
   if (typeof cloudbaseAuth.getCurrentUser === "function") {
     const user = await cloudbaseAuth.getCurrentUser();
     if (user) return user;
-  }
-  if (typeof cloudbaseAuth.getSession === "function") {
-    const sessionResult = await cloudbaseAuth.getSession();
-    return sessionResult?.data?.session?.user || sessionResult?.session?.user || null;
   }
   return cloudbaseAuth.currentUser || null;
 }
@@ -443,38 +449,20 @@ function getCloudBaseUserLabel(user, fallback = "") {
 async function getCloudErrorMessage(error, account = "") {
   const raw = extractErrorText(error);
   const errorCode = extractCloudErrorCode(error);
+  const errorDetail = `${raw} ${errorCode}`;
   if (/failed to fetch|cors|cross-origin|permission denied/i.test(raw)) {
     return "连接 CloudBase 失败。请确认安全来源已添加 zenghanlu04-source.github.io，并检查 PostgreSQL 的登录用户权限。";
   }
   if (/provider|not enabled|unauthorized_client/i.test(raw)) {
     return "CloudBase 用户名密码登录未开启，请在身份认证的登录方式中启用。";
   }
-  if (/user.?not.?found|not.?exist|用户不存在/i.test(`${raw} ${errorCode}`)) {
+  if (/user.?not.?found|not.?exist|用户不存在/i.test(errorDetail)) {
     return `CloudBase 未找到账号“${account}”。请核对用户管理中的“用户名”列，不要输入用户 ID。`;
   }
-  if (/invalid|password|credential/i.test(raw)) {
-    const registered = await isCloudBaseUsernameRegistered(account);
-    if (registered === true) {
-      return `账号“${account}”已存在，但当前密码未通过验证（${errorCode || "INVALID_CREDENTIALS"}）。请在 CloudBase 用户管理里重新输入新密码后点击“确定”，再用该用户名登录。`;
-    }
+  if (/invalid|password|credential/i.test(errorDetail)) {
     return `账号或密码不正确（${errorCode || "CloudBase 未返回错误代码"}）。请确认输入的是用户管理里创建时填写的用户名、邮箱或手机号，不是用户 ID。`;
   }
   return `${raw || "登录失败，请检查账号、密码、CloudBase 安全来源和身份认证设置。"}${errorCode ? `（${errorCode}）` : ""}`;
-}
-
-async function isCloudBaseUsernameRegistered(account) {
-  const username = String(account || "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:+@-]{4,23}$/.test(username)) return null;
-  if (typeof cloudbaseAuth?.isUsernameRegistered !== "function") return null;
-  try {
-    const result = await cloudbaseAuth.isUsernameRegistered(username);
-    if (typeof result === "boolean") return result;
-    if (typeof result?.data === "boolean") return result.data;
-    if (typeof result?.data?.registered === "boolean") return result.data.registered;
-    return null;
-  } catch (error) {
-    return null;
-  }
 }
 
 function extractCloudErrorCode(error) {
