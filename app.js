@@ -11,6 +11,7 @@ const backupFormat = "vr-training-encrypted-backup";
 const backupVersion = 1;
 const backupIterations = 250000;
 const defaultTeacherRates = {
+  "内部": 0,
   "普通": 400,
   "铜牌": 500,
   "银牌": 600,
@@ -901,10 +902,11 @@ function formatFullDate(value) {
 }
 
 function resolveTrainingEndDate(startDate, endDate, days) {
-  if (!startDate) return endDate || "";
+  if (endDate) return endDate;
+  if (!startDate) return "";
   const count = Number(days) || 0;
   if (count > 1) return formatFullDate(addDays(parseDate(startDate), count - 1));
-  return endDate || startDate;
+  return startDate;
 }
 
 function serialFromTrainingId(id) {
@@ -1326,7 +1328,7 @@ function renderTeacherRateSettings() {
       <p>修改后，派遣应结金额会按新标准重新计算</p>
     </div>
     <div class="rate-grid">
-      ${Object.keys(defaultTeacherRates).map((rating) => `
+      ${Object.keys(defaultTeacherRates).filter((rating) => rating !== "内部").map((rating) => `
         <label>${rating}
           <input data-teacher-rate="${rating}" type="number" min="0" value="${teacherRates[rating]}">
         </label>
@@ -1362,9 +1364,28 @@ function renderDispatchTable() {
     const reimbursement = Number(settlement.reimbursement || 0);
     const settlementStatus = normalizeSettlementStatus(settlement.settlementStatus);
     const selected = selectedDispatchKeys.has(row.key);
+    const settlementCells = amounts.isInternal
+      ? {
+        days: "--",
+        wage: "--",
+        allowance: "--",
+        deduction: "--",
+        payable: "--",
+        status: "--",
+        action: "--",
+      }
+      : {
+        days: `${amounts.teachingDays}天`,
+        wage: `${amounts.wage}元`,
+        allowance: formatOptionalMoney(settlement.remoteAllowance),
+        deduction: `${amounts.deduction}元`,
+        payable: `<button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button>`,
+        status: settlementStatusBadge(settlementStatus),
+        action: `<button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button>`,
+      };
     return `
       <tr class="clickable-row ${settlementStatus === "已结算" ? "settled-row" : ""}" data-dispatch-row="${row.key}">
-        ${selectionMode ? `<td class="select-col"><input type="checkbox" data-dispatch-select="${row.key}" ${selected ? "checked" : ""}></td>` : ""}
+        ${selectionMode ? `<td class="select-col">${amounts.isInternal ? "--" : `<input type="checkbox" data-dispatch-select="${row.key}" ${selected ? "checked" : ""}>`}</td>` : ""}
         <td class="seq-col">${formatRowSequence(index)}</td>
         <td class="id-col"><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
         <td class="name-col"><strong class="main-cell-text">${row.training.name}</strong></td>
@@ -1375,13 +1396,13 @@ function renderDispatchTable() {
         <td class="date-col">${formatTrainingDateRange(row.training)}</td>
         <td>${scoreCell(settlement.workflowScore, row, 2)}</td>
         <td>${scoreCell(settlement.surveyScore, row, 1)}</td>
-        <td class="narrow-col days-col">${amounts.teachingDays}天</td>
-        <td>${amounts.wage}元</td>
-        <td class="allowance-col">${formatOptionalMoney(settlement.remoteAllowance)}</td>
-        <td class="deduction-col">${amounts.deduction}元</td>
-        <td><button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
-        <td>${settlementStatusBadge(settlementStatus)}</td>
-        <td class="narrow-col operation-col action-cell"><button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button></td>
+        <td class="narrow-col days-col">${settlementCells.days}</td>
+        <td>${settlementCells.wage}</td>
+        <td class="allowance-col">${settlementCells.allowance}</td>
+        <td class="deduction-col">${settlementCells.deduction}</td>
+        <td>${settlementCells.payable}</td>
+        <td>${settlementCells.status}</td>
+        <td class="narrow-col operation-col action-cell">${settlementCells.action}</td>
         <td>${reimbursement}元</td>
         <td class="narrow-col reimbursement-status-col">${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
       </tr>
@@ -1476,7 +1497,8 @@ function getFilteredDispatchRows() {
     const settlement = getDispatchSettlement(row.key);
     const matchesTeacher = !selectedTeacherId || row.teacher.id === selectedTeacherId;
     const matchesMonth = !selectedMonth || getTrainingMonthKey(row.training) === selectedMonth;
-    const matchesSettlement = !selectedSettlementStatus || normalizeSettlementStatus(settlement.settlementStatus) === selectedSettlementStatus;
+    const matchesSettlement = !selectedSettlementStatus
+      || (!isInternalTeacher(row.teacher) && normalizeSettlementStatus(settlement.settlementStatus) === selectedSettlementStatus);
     return matchesTeacher && matchesMonth && matchesSettlement;
   }).sort(compareDispatchRowsByDate);
 }
@@ -1533,12 +1555,12 @@ function syncSelectedDispatchKeys(rows, selectionMode) {
     selectedDispatchKeys.clear();
     return;
   }
-  const visibleKeys = new Set(rows.map((row) => row.key));
+  const visibleKeys = new Set(rows.filter((row) => !isInternalTeacher(row.teacher)).map((row) => row.key));
   selectedDispatchKeys = new Set([...selectedDispatchKeys].filter((key) => visibleKeys.has(key)));
 }
 
 function renderDispatchBatchState(rows) {
-  const visibleKeys = rows.map((row) => row.key);
+  const visibleKeys = rows.filter((row) => !isInternalTeacher(row.teacher)).map((row) => row.key);
   const checkedCount = visibleKeys.filter((key) => selectedDispatchKeys.has(key)).length;
   const selectedTotal = rows
     .filter((row) => selectedDispatchKeys.has(row.key))
@@ -1628,18 +1650,25 @@ function getDispatchAnomaly(row) {
 }
 
 function getTeacherDailyRate(rating) {
+  if (rating === "内部") return 0;
   return Number(teacherRates[rating]) || defaultTeacherRates[rating] || defaultTeacherRates["普通"];
+}
+
+function isInternalTeacher(teacher) {
+  return teacher?.rating === "内部";
 }
 
 function getDispatchAmounts(row) {
   const settlement = getDispatchSettlement(row.key);
+  const isInternal = isInternalTeacher(row.teacher);
   const teachingDays = getTrainingDays(row.training);
   const dayRate = getTeacherDailyRate(row.teacher.rating);
-  const wage = dayRate * teachingDays;
-  const remoteAllowance = Math.max(0, Number(settlement.remoteAllowance || 0));
-  const deduction = Math.max(0, Number(settlement.adjustment || 0));
+  const wage = isInternal ? 0 : dayRate * teachingDays;
+  const remoteAllowance = isInternal ? 0 : Math.max(0, Number(settlement.remoteAllowance || 0));
+  const deduction = isInternal ? 0 : Math.max(0, Number(settlement.adjustment || 0));
   const reimbursement = Math.max(0, Number(settlement.reimbursement || 0));
   return {
+    isInternal,
     teachingDays,
     dayRate,
     wage,
@@ -1684,6 +1713,14 @@ function openAmountDetail(key) {
   const amounts = getDispatchAmounts(row);
   const settlement = getDispatchSettlement(row.key);
   document.querySelector("#amount-modal-desc").textContent = `${row.training.name}｜${row.teacher.name}`;
+  if (amounts.isInternal) {
+    document.querySelector("#amount-detail").innerHTML = `
+      <div><span>讲师评级</span><strong>内部</strong></div>
+      <div class="amount-final"><span>结算说明</span><strong>内部员工不参与讲师劳务结算</strong></div>
+    `;
+    document.querySelector("#amount-modal").classList.remove("collapsed");
+    return;
+  }
   document.querySelector("#amount-detail").innerHTML = `
     <div><span>授课天数</span><strong>${amounts.teachingDays}天</strong></div>
     <div><span>日劳务标准</span><strong>${amounts.dayRate}元/天</strong></div>
@@ -1731,13 +1768,13 @@ function openDispatchDetail(key) {
     ${detailSection("结算信息", [
       ["工作流程评分", isBlank(settlement.workflowScore) ? "待填写" : settlement.workflowScore],
       ["问卷满意度评分", isBlank(settlement.surveyScore) ? "待填写" : settlement.surveyScore],
-      ["授课天数", `${amounts.teachingDays}天`],
-      ["日劳务标准", `${amounts.dayRate}元/天`],
-      ["劳务报酬", `${amounts.wage}元`],
-      ["偏远补贴", formatOptionalMoney(settlement.remoteAllowance)],
-      ["扣款", `${amounts.deduction}元`],
-      ["应结金额", `${amounts.payable}元`],
-      ["结算状态", normalizeSettlementStatus(settlement.settlementStatus)],
+      ["授课天数", amounts.isInternal ? "--" : `${amounts.teachingDays}天`],
+      ["日劳务标准", amounts.isInternal ? "--" : `${amounts.dayRate}元/天`],
+      ["劳务报酬", amounts.isInternal ? "--" : `${amounts.wage}元`],
+      ["偏远补贴", amounts.isInternal ? "--" : formatOptionalMoney(settlement.remoteAllowance)],
+      ["扣款", amounts.isInternal ? "--" : `${amounts.deduction}元`],
+      ["应结金额", amounts.isInternal ? "--" : `${amounts.payable}元`],
+      ["结算状态", amounts.isInternal ? "--" : normalizeSettlementStatus(settlement.settlementStatus)],
       ["报销费用", `${amounts.reimbursement}元`],
       ["报销状态", normalizeReimbursementStatus(settlement.reimbursementStatus)],
       ["备注", String(settlement.note || "").trim() || "—"],
@@ -1769,6 +1806,10 @@ function closeDispatchDetail() {
 function editDispatch(key) {
   const row = getDispatchRows().find((item) => item.key === key);
   if (!row) return;
+  if (isInternalTeacher(row.teacher)) {
+    showSaveToast(false, "内部员工无需结算");
+    return;
+  }
   const settlement = getDispatchSettlement(key);
   editingDispatchKey = key;
   document.querySelector("#dispatch-modal-desc").textContent = `${row.training.name}｜${row.teacher.name}`;
@@ -1828,7 +1869,7 @@ async function saveDispatchSettlement() {
 function toggleSelectAllDispatch(checked) {
   const rows = getFilteredDispatchRows();
   if (checked) {
-    rows.forEach((row) => selectedDispatchKeys.add(row.key));
+    rows.filter((row) => !isInternalTeacher(row.teacher)).forEach((row) => selectedDispatchKeys.add(row.key));
   } else {
     rows.forEach((row) => selectedDispatchKeys.delete(row.key));
   }
@@ -1856,6 +1897,7 @@ async function batchUpdateSettlementStatus() {
 
 function teacherRatingBadge(rating) {
   const classMap = {
+    "内部": "status-settled",
     "普通": "",
     "铜牌": "status-transport",
     "银牌": "status-confirmed",
@@ -1961,7 +2003,7 @@ function closeTeacherDetail() {
 }
 
 function getTeacherTotalSessions(teacher) {
-  return Number(teacher.sessions || 0) + trainings.filter((item) => (item.teacherIds || []).includes(teacher.id)).length;
+  return trainings.filter((item) => (item.teacherIds || []).includes(teacher.id)).length;
 }
 
 function formatTrainingTeachers(item) {
