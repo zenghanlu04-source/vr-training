@@ -1332,15 +1332,8 @@ function renderDispatchTable() {
 }
 
 function renderDispatchFilters() {
-  const monthSelect = document.querySelector("#dispatch-month-filter");
   const teacherSelect = document.querySelector("#dispatch-teacher-filter");
   if (!teacherSelect) return;
-  if (monthSelect) {
-    const selectedMonth = monthSelect.value;
-    const months = getDispatchMonthOptions();
-    monthSelect.innerHTML = `<option value="">全部月份</option>${months.map((month) => `<option value="${month}" ${month === selectedMonth ? "selected" : ""}>${month}</option>`).join("")}`;
-    if (selectedMonth && !months.includes(selectedMonth)) monthSelect.value = "";
-  }
   const selected = teacherSelect.value;
   const options = getDispatchTeacherOptions()
     .map((teacher) => `<option value="${teacher.id}" ${teacher.id === selected ? "selected" : ""}>${teacher.name}</option>`)
@@ -1409,11 +1402,6 @@ function getFilteredDispatchRows() {
 function getDispatchTeacherOptions() {
   const ids = new Set(getDispatchRows().map((row) => row.teacher.id));
   return teachers.filter((teacher) => ids.has(teacher.id));
-}
-
-function getDispatchMonthOptions() {
-  return [...new Set(getDispatchRows().map((row) => getTrainingMonthKey(row.training)).filter(Boolean))]
-    .sort((a, b) => b.localeCompare(a));
 }
 
 function getTrainingMonthKey(training) {

@@ -913,7 +913,8 @@ textarea {
   gap: 8px;
 }
 
-.filter-left-group select {
+.filter-left-group select,
+.filter-left-group input[type="month"] {
   width: 132px;
   min-width: 132px;
 }
