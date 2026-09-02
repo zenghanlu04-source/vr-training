@@ -840,7 +840,11 @@ function serialFromTrainingId(id) {
 }
 
 function formatTrainingSerial(item) {
-  return String(item.serial || serialFromTrainingId(item.id)).padStart(3, "0");
+  return `VRPX${String(item.serial || serialFromTrainingId(item.id)).padStart(3, "0")}`;
+}
+
+function formatRowSequence(index) {
+  return String(index + 1).padStart(2, "0");
 }
 
 function nextTrainingSerial() {
@@ -1176,18 +1180,18 @@ function renderTrainingTable() {
   }).sort(compareTrainingsByDate);
   document.querySelector("#training-table").innerHTML = rows.map((item) => `
     <tr>
-      <td><span class="id-chip">${formatTrainingSerial(item)}</span></td>
+      <td class="id-col"><span class="id-chip">${formatTrainingSerial(item)}</span></td>
       <td class="narrow-col business-col">${ownerChip(item.owner)}</td>
-      <td>${item.name}</td>
-      <td>${item.org || "—"}</td>
+      <td class="name-col"><strong class="main-cell-text">${item.name}</strong></td>
+      <td class="org-col">${item.org || "—"}</td>
       <td>${item.city}</td>
       <td class="narrow-col people-col">${item.people || "—"}</td>
-      <td>${item.devices}台</td>
-      <td>${formatTrainingDateRange(item)}</td>
-      <td>${formatTrainingTeachers(item)}</td>
+      <td class="narrow-col device-col">${item.devices}台</td>
+      <td class="date-col">${formatTrainingDateRange(item)}</td>
+      <td class="teacher-list-col">${formatTrainingTeachers(item)}</td>
       <td>${statusBadge(getTrainingStatus(item))}</td>
       <td class="mailing-cell">${formatMailingInfo(item)}</td>
-      <td class="action-cell">
+      <td class="narrow-col operation-col action-cell">
         <button class="ghost small-btn" data-edit-training="${item.id}">编辑</button>
         <button class="danger small-btn" data-delete-training="${item.id}">删除</button>
       </td>
@@ -1267,7 +1271,7 @@ function renderDispatchTable() {
   document.querySelector("#dispatch-total").textContent = `${totalPayable}元`;
   document.querySelector("#dispatch-selection-head")?.classList.toggle("collapsed-cell", !selectionMode);
   document.querySelector("#batch-settlement")?.classList.toggle("collapsed", !selectionMode);
-  document.querySelector("#dispatch-table").innerHTML = rows.length ? rows.map((row) => {
+  document.querySelector("#dispatch-table").innerHTML = rows.length ? rows.map((row, index) => {
     const settlement = getDispatchSettlement(row.key);
     const amounts = getDispatchAmounts(row);
     const reimbursement = Number(settlement.reimbursement || 0);
@@ -1276,13 +1280,14 @@ function renderDispatchTable() {
     return `
       <tr class="clickable-row ${settlementStatus === "已结算" ? "settled-row" : ""}" data-dispatch-row="${row.key}">
         ${selectionMode ? `<td class="select-col"><input type="checkbox" data-dispatch-select="${row.key}" ${selected ? "checked" : ""}></td>` : ""}
-        <td><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
-        <td>${row.training.name}</td>
+        <td class="seq-col">${formatRowSequence(index)}</td>
+        <td class="id-col"><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
+        <td class="name-col"><strong class="main-cell-text">${row.training.name}</strong></td>
         <td>${row.training.city}</td>
         <td class="narrow-col people-col">${row.training.people || "—"}</td>
         <td class="narrow-col business-col">${ownerChip(row.training.owner)}</td>
         <td>${teacherChip(row.teacher)}</td>
-        <td>${formatTrainingDateRange(row.training)}</td>
+        <td class="date-col">${formatTrainingDateRange(row.training)}</td>
         <td>${scoreCell(settlement.workflowScore, row, 2)}</td>
         <td>${scoreCell(settlement.surveyScore, row, 1)}</td>
         <td class="narrow-col days-col">${amounts.teachingDays}天</td>
@@ -1296,7 +1301,7 @@ function renderDispatchTable() {
         <td class="narrow-col reimbursement-status-col">${reimbursementStatusBadge(settlement.reimbursementStatus)}</td>
       </tr>
     `;
-  }).join("") : `<tr><td colspan="${selectionMode ? 19 : 18}">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
+  }).join("") : `<tr><td colspan="${selectionMode ? 20 : 19}">培训管理中选择派遣讲师后，这里会自动生成讲师派遣记录。</td></tr>`;
   renderDispatchBatchState(rows);
   document.querySelectorAll("[data-dispatch-select]").forEach((checkbox) => {
     checkbox.addEventListener("click", (event) => event.stopPropagation());
