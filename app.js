@@ -31,7 +31,9 @@ let trainings = buildSampleTrainings();
 let editingTrainingId = null;
 let pendingDeleteTrainingId = null;
 let editingTeacherId = null;
+let pendingTeacherPhoto = "";
 let editingDispatchKey = null;
+let toastTimer = null;
 let cloudbaseApp = null;
 let cloudbaseAuth = null;
 let cloudbaseDb = null;
@@ -66,6 +68,7 @@ let teachers = [
   {
     id: "S001",
     name: "刘明",
+    gender: "男",
     phone: "13800020001",
     city: "安徽合肥",
     travelRange: "华东地区",
@@ -83,6 +86,7 @@ let teachers = [
   {
     id: "S002",
     name: "王倩",
+    gender: "女",
     phone: "13800020002",
     city: "河南郑州",
     travelRange: "全国",
@@ -100,6 +104,7 @@ let teachers = [
   {
     id: "S003",
     name: "陈浩",
+    gender: "男",
     phone: "13800020003",
     city: "河北保定",
     travelRange: "华北地区",
@@ -117,6 +122,7 @@ let teachers = [
   {
     id: "S004",
     name: "赵雪",
+    gender: "女",
     phone: "13800020004",
     city: "湖南长沙",
     travelRange: "华中地区",
@@ -296,10 +302,42 @@ async function seedCloudData() {
 async function upsertRecord(collection, recordKey, data) {
   if (!cloudbaseDb || storageMode !== "cloud") return false;
   try {
-    const result = await cloudbaseDb
+    const existingResult = await cloudbaseDb
       .from("vr_records")
-      .upsert({ collection, record_key: recordKey, data }, { onConflict: "collection,record_key" });
-    if (result?.error) throw result.error;
+      .select("record_key")
+      .eq("collection", collection)
+      .eq("record_key", recordKey);
+    if (isCloudError(existingResult)) throw getCloudError(existingResult);
+
+    const exists = normalizeCloudRows(existingResult).length > 0;
+    const insertPayload = { collection, record_key: recordKey, data };
+    let result = exists
+      ? await cloudbaseDb
+        .from("vr_records")
+        .update({ data })
+        .eq("collection", collection)
+        .eq("record_key", recordKey)
+      : await cloudbaseDb
+        .from("vr_records")
+        .insert(insertPayload);
+
+    if (isCloudError(result)) {
+      result = await cloudbaseDb
+        .from("vr_records")
+        .update({ data })
+        .eq("collection", collection)
+        .eq("record_key", recordKey);
+    }
+    if (isCloudError(result)) {
+      const confirmResult = await cloudbaseDb
+        .from("vr_records")
+        .select("record_key")
+        .eq("collection", collection)
+        .eq("record_key", recordKey);
+      if (isCloudError(confirmResult) || normalizeCloudRows(confirmResult).length === 0) {
+        throw getCloudError(result);
+      }
+    }
   } catch (error) {
     updateStorageStatus("云端保存失败");
     console.error(error);
@@ -359,6 +397,28 @@ function normalizeCloudRows(result) {
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(result?.records)) return result.records;
   return [];
+}
+
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
+function isCloudError(result) {
+  if (!result) return false;
+  if (result.error) return true;
+  const code = result.code ?? result.errCode;
+  if (code === undefined || code === null || code === "" || code === 0 || code === "0") return false;
+  return !String(code).toLowerCase().includes("success");
+}
+
+function getCloudError(result) {
+  return result?.error || new Error(result?.message || result?.errMsg || `CloudBase error ${result?.code || result?.errCode || ""}`.trim());
 }
 
 async function deleteTrainingRecord(id) {
@@ -673,6 +733,19 @@ function downloadTextFile(text, filename, type = "text/plain;charset=utf-8") {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function showSaveToast(success, message = "") {
+  const toast = document.querySelector("#save-toast");
+  if (!toast) return;
+  toast.textContent = message || (success ? "已保存" : "保存失败");
+  toast.classList.toggle("error", !success);
+  toast.classList.remove("collapsed", "fade-out");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => toast.classList.add("collapsed"), 360);
+  }, 3000);
 }
 
 function backupFilename() {
@@ -1179,9 +1252,9 @@ function renderTrainingTable() {
       && (!province || item.province === province)
       && (!status || autoStatus === status)
       && (!risk || (risk === "risk" ? hasRisk : !hasRisk));
-  }).sort(compareTrainingsByDate);
+  }).sort(compareTrainingTableRows);
   document.querySelector("#training-table").innerHTML = rows.map((item, index) => `
-    <tr class="${getTrainingStatus(item) === "已取消" ? "canceled-row" : ""}">
+    <tr class="${trainingRowClass(item)}">
       <td class="seq-col">${formatRowSequence(index)}</td>
       <td class="id-col"><span class="id-chip">${formatTrainingSerial(item)}</span></td>
       <td class="narrow-col business-col">${ownerChip(item.owner)}</td>
@@ -1213,11 +1286,12 @@ function renderTeacherTable() {
   const rows = teachers
     .filter((teacher) => !keyword || teacher.name.includes(keyword) || String(teacher.profile || "").includes(keyword))
     .sort((a, b) => Number(a.teacherStatus === "离职") - Number(b.teacherStatus === "离职"));
-  document.querySelector("#teacher-table").innerHTML = rows.map((teacher) => `
-    <tr>
-      <td class="teacher-name-col"><strong class="main-cell-text">${teacher.name}</strong></td>
+  document.querySelector("#teacher-table").innerHTML = rows.map((teacher, index) => `
+    <tr class="clickable-row" data-teacher-row="${teacher.id}">
+      <td class="seq-col">${formatRowSequence(index)}</td>
+      <td class="teacher-name-col"><div class="teacher-name-stack"><strong class="main-cell-text">${teacher.name}</strong>${teacherGenderBadge(teacher.gender)}</div></td>
       <td class="phone-col">${teacher.phone}</td>
-      <td class="city-col">${teacher.city}</td>
+      <td class="teacher-city-col">${teacher.city}</td>
       <td class="travel-col">${teacher.travelRange}</td>
       <td class="metric-col">${getTeacherTotalSessions(teacher)}场</td>
       <td class="metric-col">${teacher.refusals}</td>
@@ -1225,14 +1299,21 @@ function renderTeacherTable() {
       <td class="metric-col">${teacher.complaints}</td>
       <td class="rating-col">${teacherRatingBadge(teacher.rating)}</td>
       <td class="teacher-profile-col profile-cell">${summarizeText(teacher.profile)}</td>
-      <td class="status-col">${teacherStatusBadge(teacher.teacherStatus)}</td>
+      <td class="teacher-photo-col">${teacherPhotoCell(teacher.photo)}</td>
+      <td class="teacher-status-col">${teacherStatusBadge(teacher.teacherStatus)}</td>
       <td class="narrow-col operation-col action-cell">
         <button class="ghost small-btn" data-edit-teacher="${teacher.id}">编辑</button>
       </td>
     </tr>
   `).join("");
   document.querySelectorAll("[data-edit-teacher]").forEach((btn) => {
-    btn.addEventListener("click", () => editTeacher(btn.dataset.editTeacher));
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      editTeacher(btn.dataset.editTeacher);
+    });
+  });
+  document.querySelectorAll("[data-teacher-row]").forEach((rowEl) => {
+    rowEl.addEventListener("click", () => openTeacherDetail(rowEl.dataset.teacherRow));
   });
 }
 
@@ -1257,11 +1338,12 @@ function renderTeacherRateSettings() {
       teacherRates[input.dataset.teacherRate] = Math.max(0, Number(input.value || 0));
       renderDispatchTable();
     });
-    input.addEventListener("change", () => {
+    input.addEventListener("change", async () => {
       teacherRates = normalizeTeacherRates(teacherRates);
       renderTeacherRateSettings();
       renderDispatchTable();
-      void saveSettings();
+      const saved = await saveSettings();
+      showSaveToast(saved);
     });
   });
 }
@@ -1408,16 +1490,29 @@ function getTrainingMonthKey(training) {
   return training.startDate ? training.startDate.slice(0, 7) : "";
 }
 
-function trainingDatePriority(training) {
-  if (!training.startDate) return Number.MAX_SAFE_INTEGER;
-  const diff = parseDate(training.startDate) - today;
-  return diff >= 0 ? diff : Math.abs(diff) + (366 * dayMs);
-}
-
 function compareTrainingsByDate(a, b) {
-  const dateDiff = trainingDatePriority(a) - trainingDatePriority(b);
+  const dateDiff = trainingDateValue(a) - trainingDateValue(b);
   if (dateDiff !== 0) return dateDiff;
   return formatTrainingSerial(a).localeCompare(formatTrainingSerial(b), "zh-CN", { numeric: true });
+}
+
+function trainingDateValue(training) {
+  if (!training.startDate && !training.endDate) return Number.MAX_SAFE_INTEGER;
+  return parseDate(training.startDate || training.endDate).getTime();
+}
+
+function compareTrainingTableRows(a, b) {
+  const aCompleted = getTrainingStatus(a) === "已完成";
+  const bCompleted = getTrainingStatus(b) === "已完成";
+  if (aCompleted !== bCompleted) return aCompleted ? 1 : -1;
+  return compareTrainingsByDate(a, b);
+}
+
+function trainingRowClass(item) {
+  const status = getTrainingStatus(item);
+  if (status === "已取消") return "canceled-row";
+  if (status === "已完成") return "completed-row";
+  return "";
 }
 
 function compareDispatchRowsByDate(a, b) {
@@ -1702,7 +1797,7 @@ function closeDispatchModal() {
   document.querySelector("#dispatch-modal-desc").textContent = "培训信息、讲师、授课天数和劳务报酬自动同步";
 }
 
-function saveDispatchSettlement() {
+async function saveDispatchSettlement() {
   if (!editingDispatchKey) return;
   const keyToSave = editingDispatchKey;
   const data = {};
@@ -1726,7 +1821,8 @@ function saveDispatchSettlement() {
   closeDispatchModal();
   renderDispatchTable();
   renderAnomalyTable();
-  void saveDispatchSettlementRecord(keyToSave, data);
+  const saved = await saveDispatchSettlementRecord(keyToSave, data);
+  showSaveToast(saved);
 }
 
 function toggleSelectAllDispatch(checked) {
@@ -1739,7 +1835,7 @@ function toggleSelectAllDispatch(checked) {
   renderDispatchTable();
 }
 
-function batchUpdateSettlementStatus() {
+async function batchUpdateSettlementStatus() {
   const status = normalizeSettlementStatus(document.querySelector("#batch-settlement-status")?.value);
   const keys = [...selectedDispatchKeys];
   if (!keys.length) {
@@ -1754,7 +1850,8 @@ function batchUpdateSettlementStatus() {
   });
   renderDispatchTable();
   renderAnomalyTable();
-  void Promise.all(keys.map((key) => saveDispatchSettlementRecord(key, dispatchSettlements[key])));
+  const results = await Promise.all(keys.map((key) => saveDispatchSettlementRecord(key, dispatchSettlements[key])));
+  showSaveToast(results.every(Boolean));
 }
 
 function teacherRatingBadge(rating) {
@@ -1772,6 +1869,95 @@ function teacherRatingBadge(rating) {
 function teacherStatusBadge(status = "正常") {
   const className = status === "离职" ? "status-transport" : "status-using";
   return `<span class="badge ${className}">${status}</span>`;
+}
+
+function teacherGenderBadge(gender = "") {
+  const normalized = gender === "男" || gender === "女" ? gender : "未填";
+  const className = normalized === "女" ? "gender-female" : normalized === "男" ? "gender-male" : "gender-empty";
+  return `<span class="gender-badge ${className}">${normalized}</span>`;
+}
+
+function teacherPhotoCell(photo) {
+  return photo
+    ? `<img class="teacher-photo-thumb" src="${photo}" alt="讲师画像">`
+    : `<span class="muted-text">未上传</span>`;
+}
+
+function renderTeacherPhotoPreview() {
+  const preview = document.querySelector("#teacher-photo-preview");
+  if (!preview) return;
+  preview.innerHTML = pendingTeacherPhoto
+    ? `<img class="teacher-photo-preview-img" src="${pendingTeacherPhoto}" alt="讲师画像预览"><span>已选择画像</span>`
+    : `<span class="muted-text">未上传画像</span>`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("图片加载失败"));
+    image.src = dataUrl;
+  });
+}
+
+async function compressTeacherPhoto(file) {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const maxSize = 900;
+  const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+async function handleTeacherPhotoUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    showSaveToast(false, "请选择图片文件");
+    event.target.value = "";
+    return;
+  }
+  try {
+    pendingTeacherPhoto = await compressTeacherPhoto(file);
+    renderTeacherPhotoPreview();
+  } catch (error) {
+    console.error(error);
+    showSaveToast(false, "图片读取失败");
+  }
+}
+
+function openTeacherDetail(id) {
+  const teacher = teachers.find((item) => item.id === id);
+  if (!teacher) return;
+  document.querySelector("#teacher-detail-title").textContent = `${teacher.name}｜讲师详情`;
+  document.querySelector("#teacher-detail-desc").textContent = "讲师基础画像与上传画像";
+  document.querySelector("#teacher-detail-content").innerHTML = `
+    <div class="teacher-detail-photo">
+      ${teacher.photo ? `<img src="${teacher.photo}" alt="讲师画像">` : `<div class="empty-photo">未上传画像</div>`}
+    </div>
+    <div class="teacher-profile-detail">
+      <span>讲师基础画像</span>
+      <p>${escapeHtml(teacher.profile || "—")}</p>
+    </div>
+  `;
+  document.querySelector("#teacher-detail-modal").classList.remove("collapsed");
+}
+
+function closeTeacherDetail() {
+  document.querySelector("#teacher-detail-modal").classList.add("collapsed");
 }
 
 function getTeacherTotalSessions(teacher) {
@@ -1800,33 +1986,44 @@ function openTeacherModal() {
 function closeTeacherModal() {
   document.querySelector("#teacher-modal").classList.add("collapsed");
   editingTeacherId = null;
+  pendingTeacherPhoto = "";
   document.querySelector("#teacher-modal-title").textContent = "创建师资信息";
   document.querySelector("#save-teacher").textContent = "保存信息";
   document.querySelectorAll("[data-teacher-field]").forEach((el) => {
     if (el.tagName === "SELECT") {
-      el.value = el.dataset.teacherField === "teacherStatus" ? "正常" : "普通";
+      if (el.dataset.teacherField === "teacherStatus") {
+        el.value = "正常";
+      } else if (el.dataset.teacherField === "gender") {
+        el.value = "";
+      } else {
+        el.value = "普通";
+      }
     } else if (el.type === "number") {
       el.value = 0;
     } else {
       el.value = "";
     }
   });
+  document.querySelector("#teacher-photo-input").value = "";
+  renderTeacherPhotoPreview();
 }
 
 function editTeacher(id) {
   const teacher = teachers.find((item) => item.id === id);
   if (!teacher) return;
   editingTeacherId = id;
+  pendingTeacherPhoto = teacher.photo || "";
   document.querySelector("#teacher-modal-title").textContent = "编辑师资信息";
   document.querySelector("#save-teacher").textContent = "保存修改";
   document.querySelectorAll("[data-teacher-field]").forEach((el) => {
     const value = teacher[el.dataset.teacherField];
     el.value = value ?? (el.type === "number" ? 0 : "");
   });
+  renderTeacherPhotoPreview();
   openTeacherModal();
 }
 
-function createTeacher() {
+async function createTeacher() {
   const data = {};
   document.querySelectorAll("[data-teacher-field]").forEach((el) => {
     data[el.dataset.teacherField] = el.type === "number" ? Number(el.value || 0) : el.value.trim();
@@ -1838,6 +2035,7 @@ function createTeacher() {
   const nextTeacher = {
     id: editingTeacherId || `S${String(Date.now()).slice(-6)}`,
     name: data.name,
+    gender: data.gender,
     phone: data.phone,
     city: data.city || "未填写",
     travelRange: data.travelRange || "未填写",
@@ -1851,6 +2049,7 @@ function createTeacher() {
     bankCard: data.bankCard,
     bankName: data.bankName,
     profile: data.profile,
+    photo: pendingTeacherPhoto,
   };
   if (editingTeacherId) {
     teachers = teachers.map((teacher) => teacher.id === editingTeacherId ? nextTeacher : teacher);
@@ -1859,7 +2058,8 @@ function createTeacher() {
   }
   closeTeacherModal();
   renderAll();
-  void saveTeacherRecord(nextTeacher);
+  const saved = await saveTeacherRecord(nextTeacher);
+  showSaveToast(saved);
 }
 
 function ownerChip(owner) {
@@ -1890,7 +2090,7 @@ function statusBadge(status) {
     "已确认": "status-confirmed",
     "运输中": "status-transport",
     "使用中": "status-using",
-    "已完成": "",
+    "已完成": "status-settled",
     "已取消": "status-settled",
   };
   return `<span class="badge ${classMap[status] || ""}">${status}</span>`;
@@ -1905,7 +2105,7 @@ function exportTrainingTable() {
   const headers = ["序号", "培训编号", "商务", "培训班名称", "客户机构名称", "省市", "培训人数", "设备需求量", "培训日期", "派遣讲师", "状态", "设备来源", "邮寄地址", "收货人", "电话"];
   const rows = trainings
     .slice()
-    .sort(compareTrainingsByDate)
+    .sort(compareTrainingTableRows)
     .map((item, index) => [
       formatRowSequence(index),
       formatTrainingSerial(item),
@@ -2230,7 +2430,7 @@ function renderRisk() {
     : `${hasOwner ? "" : "请选择商务负责人。"}设备检查：本场需要${need || 0}台，已确认来源${sourceSum}台，请补齐来源或保存为预排。`;
 }
 
-function createTraining(status = "已确认") {
+async function createTraining(status = "已确认") {
   const fields = document.querySelectorAll("[data-field]");
   fields.forEach((el) => {
     previewData[el.dataset.field] = el.multiple ? Array.from(el.selectedOptions).map((option) => option.value) : el.value;
@@ -2276,7 +2476,8 @@ function createTraining(status = "已确认") {
   renderAll();
   switchPage("training");
   closeCreatePanel();
-  void saveTrainingRecord(nextTraining);
+  const saved = await saveTrainingRecord(nextTraining);
+  showSaveToast(saved);
 }
 
 function switchPage(page) {
@@ -2332,6 +2533,9 @@ function bindEvents() {
   document.querySelector("#teacher-backdrop").addEventListener("click", closeTeacherModal);
   document.querySelector("#cancel-teacher").addEventListener("click", closeTeacherModal);
   document.querySelector("#save-teacher").addEventListener("click", createTeacher);
+  document.querySelector("#teacher-photo-input").addEventListener("change", handleTeacherPhotoUpload);
+  document.querySelector("#teacher-detail-backdrop").addEventListener("click", closeTeacherDetail);
+  document.querySelector("#close-teacher-detail").addEventListener("click", closeTeacherDetail);
   document.querySelector("#dispatch-backdrop").addEventListener("click", closeDispatchModal);
   document.querySelector("#cancel-dispatch").addEventListener("click", closeDispatchModal);
   document.querySelector("#save-dispatch").addEventListener("click", saveDispatchSettlement);

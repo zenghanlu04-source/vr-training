@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VR培训排期管理系统</title>
-  <link rel="stylesheet" href="./styles.css?v=20260902-release">
+  <link rel="stylesheet" href="./styles.css?v=20260902-savefix">
 </head>
 <body>
   <div class="app-shell">
@@ -321,9 +321,10 @@
               <table class="teacher-table">
                 <thead>
                   <tr>
+                    <th class="seq-col">序号</th>
                     <th class="teacher-name-col">讲师姓名</th>
                     <th class="phone-col">讲师手机号</th>
-                    <th class="city-col">常驻城市</th>
+                    <th class="teacher-city-col">常驻城市</th>
                     <th class="travel-col">可出差范围</th>
                     <th class="metric-col"><span class="th-stack"><strong>累计</strong><span>场次</span></span></th>
                     <th class="metric-col"><span class="th-stack"><strong>派遣拒绝</strong><span>次数</span></span></th>
@@ -331,7 +332,8 @@
                     <th class="metric-col"><span class="th-stack"><strong>客户投诉</strong><span>次数</span></span></th>
                     <th class="rating-col">讲师评级</th>
                     <th class="teacher-profile-col">讲师基础画像</th>
-                    <th class="status-col">师资状态</th>
+                    <th class="teacher-photo-col">上传画像</th>
+                    <th class="teacher-status-col">师资状态</th>
                     <th class="narrow-col operation-col">操作</th>
                   </tr>
                 </thead>
@@ -357,6 +359,11 @@
           </div>
           <div class="preview-grid teacher-form" id="teacher-form">
             <label>讲师姓名<input data-teacher-field="name" placeholder="请输入讲师姓名"></label>
+            <label>性别<select data-teacher-field="gender">
+              <option value="">未填</option>
+              <option value="男">男</option>
+              <option value="女">女</option>
+            </select></label>
             <label>讲师手机号<input data-teacher-field="phone" placeholder="请输入手机号"></label>
             <label>常驻城市<input data-teacher-field="city" placeholder="如：安徽合肥"></label>
             <label>可出差范围<input data-teacher-field="travelRange" placeholder="如：华东/全国/省内"></label>
@@ -378,7 +385,25 @@
             <label>身份证号<input data-teacher-field="idCard" placeholder="隐藏信息"></label>
             <label>银行卡号<input data-teacher-field="bankCard" placeholder="隐藏信息"></label>
             <label>开户行<input data-teacher-field="bankName" placeholder="隐藏信息"></label>
+            <label>上传画像<input id="teacher-photo-input" type="file" accept="image/*"></label>
             <label class="wide-field">讲师基础画像<textarea data-teacher-field="profile" rows="3" placeholder="例如：擅长农产品电商、课堂互动强、适合西北地区现场培训"></textarea></label>
+            <div class="teacher-photo-preview" id="teacher-photo-preview"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="create-modal collapsed" id="teacher-detail-modal">
+        <div class="create-backdrop" id="teacher-detail-backdrop"></div>
+        <section class="panel confirm-panel teacher-detail-panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="teacher-detail-title">讲师详情</h2>
+              <p id="teacher-detail-desc">讲师基础画像与上传画像</p>
+            </div>
+          </div>
+          <div class="teacher-detail-content" id="teacher-detail-content"></div>
+          <div class="form-actions">
+            <button class="primary" id="close-teacher-detail">知道了</button>
           </div>
         </section>
       </section>
@@ -470,8 +495,9 @@
       </div>
     </section>
   </section>
+  <div class="save-toast collapsed" id="save-toast">已保存</div>
   <script src="./config.js?v=20260901e"></script>
   <script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
-  <script src="./app.js?v=20260902-release"></script>
+  <script src="./app.js?v=20260902-savefix"></script>
 </body>
 </html>
