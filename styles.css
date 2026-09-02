@@ -1180,6 +1180,7 @@ th {
   color: #43566f;
   background: linear-gradient(180deg, rgba(250, 253, 255, 0.96), rgba(245, 249, 254, 0.94));
   font-weight: 650;
+  font-size: 14px;
   white-space: normal;
   line-height: 1.6;
 }
@@ -1250,9 +1251,9 @@ tbody tr.settled-row:hover {
 }
 
 .date-col {
-  width: 104px;
-  min-width: 96px;
-  max-width: 116px;
+  width: 76px;
+  min-width: 72px;
+  max-width: 88px;
 }
 
 .city-col {
@@ -1262,9 +1263,9 @@ tbody tr.settled-row:hover {
 }
 
 .teacher-col {
-  width: 96px;
-  min-width: 90px;
-  max-width: 108px;
+  width: 76px;
+  min-width: 72px;
+  max-width: 88px;
 }
 
 .deduction-col {
@@ -1291,6 +1292,12 @@ tbody tr.settled-row:hover {
   max-width: 96px;
 }
 
+.allowance-col {
+  width: 58px;
+  min-width: 56px;
+  max-width: 68px;
+}
+
 .status-col {
   width: 88px;
   min-width: 84px;
@@ -1298,9 +1305,9 @@ tbody tr.settled-row:hover {
 }
 
 .narrow-col {
-  width: 68px;
-  min-width: 64px;
-  max-width: 82px;
+  width: 60px;
+  min-width: 56px;
+  max-width: 72px;
   padding-left: 6px;
   padding-right: 6px;
   white-space: nowrap;
@@ -1310,6 +1317,19 @@ tbody tr.settled-row:hover {
   width: 76px;
   min-width: 72px;
   max-width: 88px;
+}
+
+.people-col,
+.days-col {
+  width: 56px;
+  min-width: 52px;
+  max-width: 66px;
+}
+
+.days-col {
+  width: 52px;
+  min-width: 50px;
+  max-width: 62px;
 }
 
 .people-col,
@@ -1345,12 +1365,13 @@ tbody tr.settled-row:hover {
 
 .th-stack strong {
   color: #263b56;
+  font-size: 14px;
   font-weight: 750;
 }
 
 .th-stack span {
   color: #6c7b8d;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .main-cell-text {

@@ -1292,7 +1292,7 @@ function renderDispatchTable() {
         <td>${scoreCell(settlement.surveyScore, row, 1)}</td>
         <td class="narrow-col days-col">${amounts.teachingDays}天</td>
         <td>${amounts.wage}元</td>
-        <td>${formatOptionalMoney(settlement.remoteAllowance)}</td>
+        <td class="allowance-col">${formatOptionalMoney(settlement.remoteAllowance)}</td>
         <td class="deduction-col">${amounts.deduction}元</td>
         <td><button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
         <td>${settlementStatusBadge(settlementStatus)}</td>
