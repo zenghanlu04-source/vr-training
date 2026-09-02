@@ -1283,17 +1283,17 @@ function renderDispatchTable() {
         <td class="seq-col">${formatRowSequence(index)}</td>
         <td class="id-col"><span class="id-chip">${formatTrainingSerial(row.training)}</span></td>
         <td class="name-col"><strong class="main-cell-text">${row.training.name}</strong></td>
-        <td>${row.training.city}</td>
+        <td class="city-col">${row.training.city}</td>
         <td class="narrow-col people-col">${row.training.people || "—"}</td>
         <td class="narrow-col business-col">${ownerChip(row.training.owner)}</td>
-        <td>${teacherChip(row.teacher)}</td>
+        <td class="teacher-col">${teacherChip(row.teacher)}</td>
         <td class="date-col">${formatTrainingDateRange(row.training)}</td>
         <td>${scoreCell(settlement.workflowScore, row, 2)}</td>
         <td>${scoreCell(settlement.surveyScore, row, 1)}</td>
         <td class="narrow-col days-col">${amounts.teachingDays}天</td>
         <td>${amounts.wage}元</td>
         <td>${formatOptionalMoney(settlement.remoteAllowance)}</td>
-        <td>${amounts.deduction}元</td>
+        <td class="deduction-col">${amounts.deduction}元</td>
         <td><button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button></td>
         <td>${settlementStatusBadge(settlementStatus)}</td>
         <td class="narrow-col operation-col action-cell"><button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button></td>
@@ -1346,6 +1346,14 @@ function renderDispatchFilters() {
   if (selected && !getDispatchTeacherOptions().some((teacher) => teacher.id === selected)) {
     teacherSelect.value = "";
   }
+}
+
+function resetDispatchFilters() {
+  document.querySelector("#dispatch-month-filter").value = "";
+  document.querySelector("#dispatch-teacher-filter").value = "";
+  document.querySelector("#dispatch-settlement-filter").value = "";
+  selectedDispatchKeys.clear();
+  renderDispatchTable();
 }
 
 function renderAnomalyTable() {
@@ -2298,6 +2306,7 @@ function bindEvents() {
   document.querySelector("#dispatch-month-filter").addEventListener("change", renderDispatchTable);
   document.querySelector("#dispatch-teacher-filter").addEventListener("change", renderDispatchTable);
   document.querySelector("#dispatch-settlement-filter").addEventListener("change", renderDispatchTable);
+  document.querySelector("#reset-dispatch-filters").addEventListener("click", resetDispatchFilters);
   document.querySelector("#dispatch-select-all").addEventListener("change", (event) => toggleSelectAllDispatch(event.target.checked));
   document.querySelector("#batch-update-settlement").addEventListener("click", batchUpdateSettlementStatus);
   document.querySelector("#amount-backdrop").addEventListener("click", closeAmountDetail);

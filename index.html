@@ -142,18 +142,21 @@
               </div>
             </div>
             <div class="table-filters dispatch-filters">
-              <select id="dispatch-month-filter">
-                <option value="">全部月份</option>
-              </select>
-              <select id="dispatch-teacher-filter">
-                <option value="">全部讲师</option>
-              </select>
-              <select id="dispatch-settlement-filter">
-                <option value="">全部结算状态</option>
-                <option value="待结算">待结算</option>
-                <option value="已提交">已提交</option>
-                <option value="已结算">已结算</option>
-              </select>
+              <div class="filter-left-group">
+                <select id="dispatch-month-filter">
+                  <option value="">全部月份</option>
+                </select>
+                <select id="dispatch-teacher-filter">
+                  <option value="">全部讲师</option>
+                </select>
+                <select id="dispatch-settlement-filter">
+                  <option value="">全部结算状态</option>
+                  <option value="待结算">待结算</option>
+                  <option value="已提交">已提交</option>
+                  <option value="已结算">已结算</option>
+                </select>
+                <button class="ghost small-btn" id="reset-dispatch-filters">重置</button>
+              </div>
               <div class="amount-summary">
                 <span>当前筛选应结总额</span>
                 <strong id="dispatch-total">0元</strong>
@@ -177,17 +180,17 @@
                     <th class="seq-col">序号</th>
                     <th class="id-col"><span class="th-stack"><strong>培训编号</strong><span>ID</span></span></th>
                     <th class="name-col"><span class="th-stack"><strong>培训班名称</strong><span>客户项目</span></span></th>
-                    <th>省市</th>
+                    <th class="city-col">省市</th>
                     <th class="narrow-col people-col"><span class="th-stack"><strong>培训</strong><span>人数</span></span></th>
                     <th class="narrow-col business-col">商务</th>
-                    <th>讲师</th>
+                    <th class="teacher-col">讲师</th>
                     <th class="date-col">培训日期</th>
                     <th class="score-col"><span class="th-stack"><strong>工作流程</strong><span>评分</span></span></th>
                     <th class="score-col"><span class="th-stack"><strong>问卷满意度</strong><span>评分</span></span></th>
                     <th class="narrow-col days-col"><span class="th-stack"><strong>授课</strong><span>天数</span></span></th>
                     <th class="money-col"><span class="th-stack"><strong>劳务</strong><span>报酬</span></span></th>
                     <th class="money-col"><span class="th-stack"><strong>偏远</strong><span>补贴</span></span></th>
-                    <th>扣款</th>
+                    <th class="deduction-col">扣款</th>
                     <th class="money-col"><span class="th-stack"><strong>应结</strong><span>金额</span></span></th>
                     <th class="status-col"><span class="th-stack"><strong>结算</strong><span>状态</span></span></th>
                     <th class="narrow-col operation-col">操作</th>

@@ -902,11 +902,25 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-start;
 }
 
-.dispatch-filters > select {
-  min-width: 148px;
+.filter-left-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-left-group select {
+  width: 132px;
+  min-width: 132px;
+}
+
+.filter-left-group .small-btn {
+  width: 58px;
+  padding: 0;
 }
 
 .amount-summary {
@@ -968,7 +982,7 @@ textarea {
 
 table {
   width: 100%;
-  min-width: 1540px;
+  min-width: 1480px;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -983,7 +997,7 @@ table {
 }
 
 .dispatch-table {
-  min-width: 1760px;
+  min-width: 1620px;
   table-layout: fixed;
 }
 
@@ -1224,9 +1238,9 @@ tbody tr.settled-row:hover {
 }
 
 .name-col {
-  width: 178px;
-  min-width: 168px;
-  max-width: 210px;
+  width: 224px;
+  min-width: 210px;
+  max-width: 250px;
 }
 
 .org-col {
@@ -1239,6 +1253,24 @@ tbody tr.settled-row:hover {
   width: 104px;
   min-width: 96px;
   max-width: 116px;
+}
+
+.city-col {
+  width: 112px;
+  min-width: 104px;
+  max-width: 126px;
+}
+
+.teacher-col {
+  width: 96px;
+  min-width: 90px;
+  max-width: 108px;
+}
+
+.deduction-col {
+  width: 78px;
+  min-width: 72px;
+  max-width: 84px;
 }
 
 .teacher-list-col {
