@@ -1184,12 +1184,12 @@ function renderTrainingTable() {
       <td class="narrow-col business-col">${ownerChip(item.owner)}</td>
       <td class="name-col"><strong class="main-cell-text">${item.name}</strong></td>
       <td class="org-col">${item.org || "—"}</td>
-      <td>${item.city}</td>
+      <td class="city-col">${item.city}</td>
       <td class="narrow-col people-col">${item.people || "—"}</td>
-      <td class="narrow-col device-col">${item.devices}台</td>
+      <td class="device-col">${item.devices}台</td>
       <td class="date-col">${formatTrainingDateRange(item)}</td>
       <td class="teacher-list-col">${formatTrainingTeachers(item)}</td>
-      <td>${statusBadge(getTrainingStatus(item))}</td>
+      <td class="status-col">${statusBadge(getTrainingStatus(item))}</td>
       <td class="mailing-cell">${formatMailingInfo(item)}</td>
       <td class="narrow-col operation-col action-cell">
         <button class="ghost small-btn" data-edit-training="${item.id}">编辑</button>
@@ -1212,18 +1212,18 @@ function renderTeacherTable() {
     .sort((a, b) => Number(a.teacherStatus === "离职") - Number(b.teacherStatus === "离职"));
   document.querySelector("#teacher-table").innerHTML = rows.map((teacher) => `
     <tr>
-      <td><strong>${teacher.name}</strong></td>
-      <td>${teacher.phone}</td>
-      <td>${teacher.city}</td>
-      <td>${teacher.travelRange}</td>
-      <td>${getTeacherTotalSessions(teacher)}场</td>
-      <td>${teacher.refusals}</td>
-      <td>${teacher.cancellations}</td>
-      <td>${teacher.complaints}</td>
-      <td>${teacherRatingBadge(teacher.rating)}</td>
-      <td class="profile-cell">${summarizeText(teacher.profile)}</td>
-      <td>${teacherStatusBadge(teacher.teacherStatus)}</td>
-      <td class="action-cell">
+      <td class="teacher-name-col"><strong class="main-cell-text">${teacher.name}</strong></td>
+      <td class="phone-col">${teacher.phone}</td>
+      <td class="city-col">${teacher.city}</td>
+      <td class="travel-col">${teacher.travelRange}</td>
+      <td class="metric-col">${getTeacherTotalSessions(teacher)}场</td>
+      <td class="metric-col">${teacher.refusals}</td>
+      <td class="metric-col">${teacher.cancellations}</td>
+      <td class="metric-col">${teacher.complaints}</td>
+      <td class="rating-col">${teacherRatingBadge(teacher.rating)}</td>
+      <td class="teacher-profile-col profile-cell">${summarizeText(teacher.profile)}</td>
+      <td class="status-col">${teacherStatusBadge(teacher.teacherStatus)}</td>
+      <td class="narrow-col operation-col action-cell">
         <button class="ghost small-btn" data-edit-teacher="${teacher.id}">编辑</button>
       </td>
     </tr>

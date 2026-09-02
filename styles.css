@@ -990,12 +990,13 @@ table {
 }
 
 .training-table {
-  min-width: 1480px;
+  min-width: 1420px;
   table-layout: fixed;
 }
 
 .teacher-table {
-  min-width: 1460px;
+  min-width: 1240px;
+  table-layout: fixed;
 }
 
 .dispatch-table {
@@ -1280,9 +1281,9 @@ tbody tr.settled-row:hover td {
 }
 
 .org-col {
-  width: 138px;
-  min-width: 128px;
-  max-width: 160px;
+  width: 132px;
+  min-width: 122px;
+  max-width: 150px;
 }
 
 .date-col {
@@ -1292,9 +1293,9 @@ tbody tr.settled-row:hover td {
 }
 
 .city-col {
-  width: 112px;
-  min-width: 104px;
-  max-width: 126px;
+  width: 104px;
+  min-width: 96px;
+  max-width: 118px;
 }
 
 .teacher-col {
@@ -1310,9 +1311,9 @@ tbody tr.settled-row:hover td {
 }
 
 .teacher-list-col {
-  width: 118px;
-  min-width: 108px;
-  max-width: 136px;
+  width: 102px;
+  min-width: 94px;
+  max-width: 120px;
 }
 
 .score-col {
@@ -1334,9 +1335,9 @@ tbody tr.settled-row:hover td {
 }
 
 .status-col {
-  width: 88px;
-  min-width: 84px;
-  max-width: 100px;
+  width: 82px;
+  min-width: 78px;
+  max-width: 96px;
 }
 
 .narrow-col {
@@ -1382,6 +1383,48 @@ tbody tr.settled-row:hover td {
   width: 84px;
   min-width: 82px;
   max-width: 96px;
+}
+
+.device-col {
+  width: 58px;
+  min-width: 54px;
+  max-width: 68px;
+}
+
+.teacher-name-col {
+  width: 92px;
+  min-width: 84px;
+  max-width: 108px;
+}
+
+.phone-col {
+  width: 116px;
+  min-width: 108px;
+  max-width: 128px;
+}
+
+.travel-col {
+  width: 112px;
+  min-width: 102px;
+  max-width: 128px;
+}
+
+.metric-col {
+  width: 70px;
+  min-width: 64px;
+  max-width: 82px;
+}
+
+.rating-col {
+  width: 82px;
+  min-width: 76px;
+  max-width: 94px;
+}
+
+.teacher-profile-col {
+  width: 176px;
+  min-width: 158px;
+  max-width: 210px;
 }
 
 .th-stack {
@@ -1525,8 +1568,9 @@ tbody tr.settled-row:hover td {
 .teacher-7 { background: #f7f1ee; border-color: #e2d2ca; color: #6d554a; }
 
 .mailing-cell {
-  min-width: 210px;
-  max-width: 260px;
+  width: 220px;
+  min-width: 200px;
+  max-width: 250px;
   color: #4b5c72;
   line-height: 1.5;
 }
@@ -1538,8 +1582,6 @@ tbody tr.settled-row:hover td {
 }
 
 .profile-cell {
-  min-width: 180px;
-  max-width: 260px;
   color: #536275;
 }
 
