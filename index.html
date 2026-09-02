@@ -99,6 +99,7 @@
             </div>
             <div class="table-filters">
               <select id="list-biz-filter"></select>
+              <input id="training-month-filter" type="month" title="筛选培训月份">
               <select id="province-filter"></select>
               <select id="status-filter"></select>
               <select id="risk-filter">
@@ -106,11 +107,13 @@
                 <option value="risk">存在风险</option>
                 <option value="safe">无风险</option>
               </select>
+              <button class="ghost small-btn" id="export-training-table">导出完整表格</button>
             </div>
             <div class="table-wrap">
               <table class="training-table">
                 <thead>
                   <tr>
+                    <th class="seq-col">序号</th>
                     <th class="id-col"><span class="th-stack"><strong>培训编号</strong><span>ID</span></span></th>
                     <th class="narrow-col business-col">商务</th>
                     <th class="name-col"><span class="th-stack"><strong>培训班名称</strong><span>客户项目</span></span></th>

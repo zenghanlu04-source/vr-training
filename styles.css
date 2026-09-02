@@ -1249,6 +1249,21 @@ tbody tr.settled-row:hover td {
     inset 0 -1px 0 rgba(220, 226, 235, 0.62);
 }
 
+tbody tr.canceled-row td,
+tbody tr.canceled-row:hover td {
+  background: rgba(235, 238, 243, 0.96);
+  color: #7a8593;
+  box-shadow:
+    0 6px 18px rgba(47, 82, 126, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(212, 218, 228, 0.7);
+}
+
+tbody tr.canceled-row .main-cell-text,
+tbody tr.canceled-row .amount-link {
+  color: #7a8593;
+}
+
 .collapsed-cell {
   display: none;
 }

@@ -3,7 +3,7 @@ const dayMs = 24 * 60 * 60 * 1000;
 const timelineStart = addDays(today, -1);
 const timelineDayCount = 16;
 const businessPeople = ["马帅", "武艺凡", "邢家琛", "熊俊宇", "师荣", "张伸", "张智真", "吴瑞", "张嘉慧"];
-const statuses = ["待排期", "已确认", "运输中", "使用中", "已完成"];
+const statuses = ["待排期", "已确认", "运输中", "使用中", "已完成", "已取消"];
 const localStorageKey = "vr_schedule_manager_state_v1";
 const localAccountKey = "vr_schedule_manager_accounts_v1";
 const rememberLoginKey = "vr_schedule_manager_remember_login_v1";
@@ -1167,6 +1167,7 @@ function renderFilters() {
 
 function renderTrainingTable() {
   const biz = document.querySelector("#list-biz-filter").value;
+  const month = document.querySelector("#training-month-filter").value;
   const province = document.querySelector("#province-filter").value;
   const status = document.querySelector("#status-filter").value;
   const risk = document.querySelector("#risk-filter").value;
@@ -1174,12 +1175,14 @@ function renderTrainingTable() {
     const hasRisk = item.source.includes("待调配");
     const autoStatus = getTrainingStatus(item);
     return (!biz || item.owner === biz)
+      && (!month || getTrainingMonthKey(item) === month)
       && (!province || item.province === province)
       && (!status || autoStatus === status)
       && (!risk || (risk === "risk" ? hasRisk : !hasRisk));
   }).sort(compareTrainingsByDate);
-  document.querySelector("#training-table").innerHTML = rows.map((item) => `
-    <tr>
+  document.querySelector("#training-table").innerHTML = rows.map((item, index) => `
+    <tr class="${getTrainingStatus(item) === "已取消" ? "canceled-row" : ""}">
+      <td class="seq-col">${formatRowSequence(index)}</td>
       <td class="id-col"><span class="id-chip">${formatTrainingSerial(item)}</span></td>
       <td class="narrow-col business-col">${ownerChip(item.owner)}</td>
       <td class="name-col"><strong class="main-cell-text">${item.name}</strong></td>
@@ -1882,7 +1885,10 @@ function teacherChip(teacher) {
 }
 
 function getTrainingStatus(item) {
+  if (item.status === "已取消") return "已取消";
+  if (item.status === "已完成") return "已完成";
   if (item.source.includes("待调配")) return "待排期";
+  if (["待排期", "运输中", "使用中"].includes(item.status)) return item.status;
   const now = today;
   if (item.endDate && now > parseDate(item.endDate)) return "已完成";
   if (item.startDate && item.endDate && between(now, item.startDate, item.endDate)) return "使用中";
@@ -1897,8 +1903,40 @@ function statusBadge(status) {
     "运输中": "status-transport",
     "使用中": "status-using",
     "已完成": "",
+    "已取消": "status-settled",
   };
   return `<span class="badge ${classMap[status] || ""}">${status}</span>`;
+}
+
+function csvCell(value) {
+  const text = String(value ?? "").replaceAll("<br>", " / ").replaceAll(/\s+/g, " ").trim();
+  return `"${text.replaceAll("\"", "\"\"")}"`;
+}
+
+function exportTrainingTable() {
+  const headers = ["序号", "培训编号", "商务", "培训班名称", "客户机构名称", "省市", "培训人数", "设备需求量", "培训日期", "派遣讲师", "状态", "设备来源", "邮寄地址", "收货人", "电话"];
+  const rows = trainings
+    .slice()
+    .sort(compareTrainingsByDate)
+    .map((item, index) => [
+      formatRowSequence(index),
+      formatTrainingSerial(item),
+      item.owner,
+      item.name,
+      item.org || "",
+      item.city,
+      item.people || "",
+      `${item.devices || 0}台`,
+      formatTrainingDateRange(item),
+      (item.teacherIds || []).map((id) => teachers.find((teacher) => teacher.id === id)?.name).filter(Boolean).join("、"),
+      getTrainingStatus(item),
+      item.source || "",
+      item.mailAddress || item.address || "",
+      item.receiver || "",
+      item.phone || "",
+    ]);
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  downloadTextFile(`\ufeff${csv}`, `VR线下培训完整表格_${formatFullDate(today)}.csv`, "text/csv;charset=utf-8");
 }
 
 function formatMailingInfo(item) {
@@ -1959,6 +1997,7 @@ function editTraining(id) {
     mailAddress: item.mailAddress || "",
     receiver: item.receiver || "",
     phone: item.phone || "",
+    status: item.status || getTrainingStatus(item),
   };
   draftSources = parseSourceString(item.source, item.devices);
   document.querySelector("#create-training").textContent = "保存修改";
@@ -2011,6 +2050,7 @@ function renderPreview() {
     ["mailAddress", "邮寄地址"],
     ["receiver", "收货人"],
     ["phone", "电话"],
+    ["status", "培训状态", "statusSelect"],
   ];
   document.querySelector("#preview-form").innerHTML = fields.map(([key, label, type]) => {
     if (type === "select") {
@@ -2019,6 +2059,9 @@ function renderPreview() {
     if (type === "multiselect") {
       const selected = Array.isArray(previewData[key]) ? previewData[key] : [];
       return `<label>${label}<div class="teacher-picker"><input class="teacher-search-input" data-teacher-search="${key}" placeholder="搜索讲师姓名"><select data-field="${key}" multiple class="multi-select">${renderTeacherOptions(selected)}</select></div></label>`;
+    }
+    if (type === "statusSelect") {
+      return `<label>${label}<select data-field="${key}">${statuses.map((s) => `<option value="${s}" ${previewData[key] === s ? "selected" : ""}>${s}</option>`).join("")}</select></label>`;
     }
     return `<label>${label}<input data-field="${key}" type="${type || "text"}" value="${previewData[key] || ""}"></label>`;
   }).join("");
@@ -2122,6 +2165,7 @@ function parseSmartText() {
     mailAddress: pick("设备邮寄地址"),
     receiver: pick("收货人"),
     phone: pick("电话"),
+    status: "已确认",
   };
   draftSources = [{ type: "北京仓", count: Number(previewData.devices) || 0 }];
   renderPreview();
@@ -2211,6 +2255,7 @@ function createTraining(status = "已确认") {
   const existingTraining = editingTrainingId ? trainings.find((item) => item.id === editingTrainingId) : null;
   const source = draftSources.map((item) => `${item.type}${item.count}台`).join(" + ");
   const endDate = resolveTrainingEndDate(previewData.startDate, previewData.endDate, previewData.days);
+  const chosenStatus = status === "待排期" ? "待排期" : (previewData.status || status);
   const nextTraining = makeTraining(
     id,
     previewData.owner || "马帅",
@@ -2222,7 +2267,7 @@ function createTraining(status = "已确认") {
     previewData.startDate,
     endDate,
     source,
-    status,
+    chosenStatus,
     {
       org: previewData.org,
       people: previewData.people,
@@ -2278,9 +2323,10 @@ function bindEvents() {
     renderGantt();
   });
   document.querySelector("#export-gantt").addEventListener("click", exportGantt);
-  ["#list-biz-filter", "#province-filter", "#status-filter", "#risk-filter"].forEach((id) => {
+  ["#list-biz-filter", "#training-month-filter", "#province-filter", "#status-filter", "#risk-filter"].forEach((id) => {
     document.querySelector(id).addEventListener("change", renderTrainingTable);
   });
+  document.querySelector("#export-training-table").addEventListener("click", exportTrainingTable);
   document.querySelector("#teacher-search").addEventListener("input", renderTeacherTable);
   document.querySelector("#parse-text").addEventListener("click", parseSmartText);
   document.querySelector("#toggle-create").addEventListener("click", toggleCreatePanel);
