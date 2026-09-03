@@ -1364,25 +1364,17 @@ function renderDispatchTable() {
     const reimbursement = Number(settlement.reimbursement || 0);
     const settlementStatus = normalizeSettlementStatus(settlement.settlementStatus);
     const selected = selectedDispatchKeys.has(row.key);
-    const settlementCells = amounts.isInternal
-      ? {
-        days: "--",
-        wage: "--",
-        allowance: "--",
-        deduction: "--",
-        payable: "--",
-        status: "--",
-        action: "--",
-      }
-      : {
-        days: `${amounts.teachingDays}天`,
-        wage: `${amounts.wage}元`,
-        allowance: formatOptionalMoney(settlement.remoteAllowance),
-        deduction: `${amounts.deduction}元`,
-        payable: `<button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button>`,
-        status: settlementStatusBadge(settlementStatus),
-        action: `<button class="ghost small-btn" data-edit-dispatch="${row.key}">编辑结算</button>`,
-      };
+    const settlementCells = {
+      days: `${amounts.teachingDays}天`,
+      wage: amounts.isInternal ? "--" : `${amounts.wage}元`,
+      allowance: amounts.isInternal ? "--" : formatOptionalMoney(settlement.remoteAllowance),
+      deduction: amounts.isInternal ? "--" : `${amounts.deduction}元`,
+      payable: amounts.isInternal
+        ? "--"
+        : `<button class="amount-link ${settlementStatus === "已结算" ? "settled-amount" : ""}" data-amount-detail="${row.key}">${amounts.payable}元</button>`,
+      status: `<button class="status-button" data-edit-dispatch="${row.key}">${settlementStatusBadge(settlementStatus)}</button>`,
+      action: `<button class="ghost small-btn" data-edit-dispatch="${row.key}">${amounts.isInternal ? "编辑评分" : "编辑结算"}</button>`,
+    };
     return `
       <tr class="clickable-row ${settlementStatus === "已结算" ? "settled-row" : ""}" data-dispatch-row="${row.key}">
         ${selectionMode ? `<td class="select-col">${amounts.isInternal ? "--" : `<input type="checkbox" data-dispatch-select="${row.key}" ${selected ? "checked" : ""}>`}</td>` : ""}
@@ -1768,13 +1760,13 @@ function openDispatchDetail(key) {
     ${detailSection("结算信息", [
       ["工作流程评分", isBlank(settlement.workflowScore) ? "待填写" : settlement.workflowScore],
       ["问卷满意度评分", isBlank(settlement.surveyScore) ? "待填写" : settlement.surveyScore],
-      ["授课天数", amounts.isInternal ? "--" : `${amounts.teachingDays}天`],
+      ["授课天数", `${amounts.teachingDays}天`],
       ["日劳务标准", amounts.isInternal ? "--" : `${amounts.dayRate}元/天`],
       ["劳务报酬", amounts.isInternal ? "--" : `${amounts.wage}元`],
       ["偏远补贴", amounts.isInternal ? "--" : formatOptionalMoney(settlement.remoteAllowance)],
       ["扣款", amounts.isInternal ? "--" : `${amounts.deduction}元`],
       ["应结金额", amounts.isInternal ? "--" : `${amounts.payable}元`],
-      ["结算状态", amounts.isInternal ? "--" : normalizeSettlementStatus(settlement.settlementStatus)],
+      ["结算状态", normalizeSettlementStatus(settlement.settlementStatus)],
       ["报销费用", `${amounts.reimbursement}元`],
       ["报销状态", normalizeReimbursementStatus(settlement.reimbursementStatus)],
       ["备注", String(settlement.note || "").trim() || "—"],
@@ -1806,13 +1798,11 @@ function closeDispatchDetail() {
 function editDispatch(key) {
   const row = getDispatchRows().find((item) => item.key === key);
   if (!row) return;
-  if (isInternalTeacher(row.teacher)) {
-    showSaveToast(false, "内部员工无需结算");
-    return;
-  }
   const settlement = getDispatchSettlement(key);
   editingDispatchKey = key;
-  document.querySelector("#dispatch-modal-desc").textContent = `${row.training.name}｜${row.teacher.name}`;
+  document.querySelector("#dispatch-modal-desc").textContent = isInternalTeacher(row.teacher)
+    ? `${row.training.name}｜${row.teacher.name}｜内部讲师仅维护评分与状态，不参与结算`
+    : `${row.training.name}｜${row.teacher.name}`;
   document.querySelectorAll("[data-dispatch-field]").forEach((el) => {
     const value = settlement[el.dataset.dispatchField];
     if (el.dataset.dispatchField === "reimbursementStatus") {

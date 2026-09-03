@@ -1624,6 +1624,19 @@ tbody tr.completed-row .amount-link {
   color: var(--red-dark);
 }
 
+.status-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.status-button:hover .badge {
+  box-shadow: 0 0 0 2px rgba(45, 100, 179, 0.12);
+}
+
 .score-chip,
 .score-value {
   display: inline-flex;
